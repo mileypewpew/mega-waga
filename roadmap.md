@@ -16,7 +16,8 @@ This is a living map, not a contract. We move one phase at a time.
 | Spec (tick v0) | [docs/superpowers/specs/2026-07-16-tick-kernel-v0-design.md](./docs/superpowers/specs/2026-07-16-tick-kernel-v0-design.md) |
 | Spec (event spine) | [docs/superpowers/specs/2026-07-16-event-log-spine-design.md](./docs/superpowers/specs/2026-07-16-event-log-spine-design.md) |
 | Plan (event spine) | [docs/superpowers/plans/2026-07-16-event-log-spine.md](./docs/superpowers/plans/2026-07-16-event-log-spine.md) |
-| Not first | Full agent chat harness, email/browser sensors, fiction park, A2A, clone of entire grok-build monorepo. |
+| Memory + XP | **Park/user sheet (A)**; classified memories; paired XP. Spec: [memory-xp design](./docs/superpowers/specs/2026-07-16-memory-xp-design.md) |
+| Not first | Per-persona XP, full agent chat, email/browser sensors, fiction park, A2A, clone of entire grok-build monorepo. |
 
 ---
 
