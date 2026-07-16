@@ -49,8 +49,8 @@ Mirror upstream patterns; **do not** clone `xai-org/grok-build` into this repo f
 
 | Concern | Choice | Upstream echo |
 |---------|--------|----------------|
-| Language | Rust, edition **2024** | Grok Build workspace |
-| Toolchain | Pin via `rust-toolchain.toml` (target **1.92** or latest stable if 1.92 unavailable) | `rust-toolchain.toml` |
+| Language | Rust, edition **2021** (widely supported; rustup stable) | Grok Build workspace spirit |
+| Toolchain | Pin via `rust-toolchain.toml` (**stable** via rustup — not distro cargo 1.75) | `rust-toolchain.toml` |
 | Build | Cargo **workspace**, modular crates | Many `xai-grok-*` crates |
 | CLI | **clap** (derive) | clap |
 | TUI | **ratatui** + **crossterm** | ratatui 0.29 family |

@@ -12,14 +12,39 @@ A fast Rust agent platform that **always knows the current world**, can **run co
 
 ### Prerequisites
 
-- **Rust** (stable) via [rustup](https://rustup.rs)
+- **Rust via [rustup](https://rustup.rs)** (recommended: current stable).  
+  This project needs a modern toolchain — **not** old distro packages like Ubuntu’s `cargo 1.75`.
 - **git** on `PATH` (for the world sensor)
-- A C linker: system `gcc`/`cc`, or the project can use a [Zig](https://ziglang.org)-based `zig cc` wrapper (see `.cargo/config.toml` notes in AGENTS.md if needed)
+- A C linker: system `gcc`/`cc`, or Zig as `zig cc` (see `.cargo/config.toml` / AGENTS.md)
+
+### Use the right Cargo (common gotcha)
+
+If you see `edition2024` errors or `Cargo (1.75.0)`, your shell is using **system** cargo ahead of rustup:
+
+```bash
+which cargo          # bad if this is /usr/bin/cargo
+cargo --version      # want 1.85+ / current stable, not 1.75
+
+# Fix for this shell:
+source "$HOME/.cargo/env"
+# or:
+export PATH="$HOME/.cargo/bin:$PATH"
+
+which cargo          # should be ~/.cargo/bin/cargo
+cargo --version
+```
+
+Make it permanent (bash):
+
+```bash
+echo 'source "$HOME/.cargo/env"' >> ~/.bashrc
+source ~/.bashrc
+```
 
 ### Build & test
 
 ```bash
-source "$HOME/.cargo/env"   # if needed
+source "$HOME/.cargo/env"
 cd grok-waga
 cargo test --workspace
 cargo build -p waga-tui --release

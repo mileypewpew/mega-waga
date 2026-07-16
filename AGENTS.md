@@ -80,7 +80,7 @@ grok-waga/                    # workspace root (eventually)
 
 Greenfield workspace (**Path A** — do not clone the full upstream monorepo for day one):
 
-- **Rust** (edition 2024), Cargo workspace, pin via `rust-toolchain.toml`
+- **Rust** (edition **2021**), Cargo workspace, pin via `rust-toolchain.toml` (use **rustup** cargo, not distro `/usr/bin/cargo`)
 - **clap**, **tokio**, **serde** / **serde_json**, **chrono**, **thiserror** / **anyhow**, **tracing**
 - **gix** for git sensors (native)
 - **ratatui** + **crossterm** for the **Waga pet** TUI
