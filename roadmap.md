@@ -1,6 +1,6 @@
 # Roadmap — grok-waga
 
-**Status:** Event Log Spine v1 — design + plan approved, ready to implement  
+**Status:** Event Log Spine v1 **implemented** (events.jsonl + stories + CLI)  
 **Last updated:** 2026-07-16  
 
 This is a living map, not a contract. We move one phase at a time.
@@ -13,7 +13,9 @@ This is a living map, not a contract. We move one phase at a time.
 | First build | **Tick kernel first** — discrete ticks that refresh world + character notice + narrative beat. |
 | Stack | **Path A** — greenfield Cargo workspace, Grok Build–aligned (Rust, clap, tokio, ratatui, gix, serde…). |
 | Companion UI | **Waga pet** — thin Ratatui on-screen pet whose mood tracks world state (not Godot/desktop overlay yet). |
-| Spec | [docs/superpowers/specs/2026-07-16-tick-kernel-v0-design.md](./docs/superpowers/specs/2026-07-16-tick-kernel-v0-design.md) |
+| Spec (tick v0) | [docs/superpowers/specs/2026-07-16-tick-kernel-v0-design.md](./docs/superpowers/specs/2026-07-16-tick-kernel-v0-design.md) |
+| Spec (event spine) | [docs/superpowers/specs/2026-07-16-event-log-spine-design.md](./docs/superpowers/specs/2026-07-16-event-log-spine-design.md) |
+| Plan (event spine) | [docs/superpowers/plans/2026-07-16-event-log-spine.md](./docs/superpowers/plans/2026-07-16-event-log-spine.md) |
 | Not first | Full agent chat harness, email/browser sensors, fiction park, A2A, clone of entire grok-build monorepo. |
 
 ---

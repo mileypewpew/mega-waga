@@ -1,6 +1,6 @@
 # Event Log Spine v1 — Design
 
-**Status:** Approved (user: “Yes, lock it”)  
+**Status:** Approved and implemented (inline session)  
 **Date:** 2026-07-16  
 **Project:** grok-waga  
 **Depends on:** [Tick Kernel v0](./2026-07-16-tick-kernel-v0-design.md)  

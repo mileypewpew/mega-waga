@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/waga-core",
+    "crates/waga-events",
     "crates/waga-world",
     "crates/waga-character",
     "crates/waga-pet",
@@ -17,9 +18,11 @@ repository = "https://github.com/local/grok-waga"
 
 [workspace.dependencies]
 waga-core = { path = "crates/waga-core" }
+waga-events = { path = "crates/waga-events" }
 waga-world = { path = "crates/waga-world" }
 waga-character = { path = "crates/waga-character" }
 waga-pet = { path = "crates/waga-pet" }
+uuid = { version = "1", features = ["v4", "serde"] }
 
 anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }

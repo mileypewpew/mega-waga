@@ -1058,6 +1058,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
+name = "uuid"
+version = "1.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf3923a6f5c4c6382e0b653c4117f48d631ea17f38ed86e2a828e6f7412f5239"
+dependencies = [
+ "getrandom",
+ "js-sys",
+ "serde_core",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "valuable"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1085,6 +1097,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "waga-events"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "uuid",
+ "waga-core",
+]
+
+[[package]]
 name = "waga-pet"
 version = "0.1.0"
 dependencies = [
@@ -1103,6 +1128,7 @@ dependencies = [
  "tracing-subscriber",
  "waga-character",
  "waga-core",
+ "waga-events",
  "waga-pet",
  "waga-world",
 ]
@@ -1117,6 +1143,7 @@ dependencies = [
  "tracing",
  "waga-character",
  "waga-core",
+ "waga-events",
  "waga-pet",
 ]
 

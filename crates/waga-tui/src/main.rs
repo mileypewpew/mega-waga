@@ -15,6 +15,7 @@ use ratatui::{Frame, Terminal};
 use std::io::stdout;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
+use waga_events::{format_event_line, format_story_line, EventLog, StoryStore};
 use waga_pet::{mood_from_snapshot, sprite, PetMood};
 use waga_world::{format_tick_summary, peek_snapshot, run_tick};
 
@@ -31,9 +32,9 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Advance the park by one tick (headless).
+    /// Advance the park by one tick (headless; appends to events.jsonl).
     Tick {
-        /// Data directory for world.json + narrative.jsonl
+        /// Data directory for events.jsonl + projection cache
         #[arg(long, default_value = ".waga")]
         data_dir: PathBuf,
 
@@ -59,6 +60,18 @@ enum Commands {
         /// Auto-tick interval in seconds (0 = manual only)
         #[arg(long, default_value_t = 10)]
         every: u64,
+    },
+    /// List recent events from the append-only log.
+    Events {
+        #[arg(long, default_value = ".waga")]
+        data_dir: PathBuf,
+        #[arg(long, default_value_t = 20)]
+        last: usize,
+    },
+    /// List stories (open and closed arcs over events).
+    Stories {
+        #[arg(long, default_value = ".waga")]
+        data_dir: PathBuf,
     },
 }
 
@@ -89,6 +102,27 @@ fn main() -> Result<()> {
             every,
         } => {
             run_pet_ui(data_dir, persona, repo, every)?;
+        }
+        Commands::Events { data_dir, last } => {
+            let log = EventLog::open(&data_dir).context("open event log")?;
+            let events = log.load_all().context("load events")?;
+            let start = events.len().saturating_sub(last);
+            for e in &events[start..] {
+                println!("{}", format_event_line(e));
+            }
+            if events.is_empty() {
+                println!("(no events yet — run `waga tick`)");
+            }
+        }
+        Commands::Stories { data_dir } => {
+            let store = StoryStore::load(&data_dir).context("load stories")?;
+            if store.stories.is_empty() {
+                println!("(no stories yet — dirty git + tick opens one)");
+            } else {
+                for s in &store.stories {
+                    println!("{}", format_story_line(s));
+                }
+            }
         }
     }
     Ok(())

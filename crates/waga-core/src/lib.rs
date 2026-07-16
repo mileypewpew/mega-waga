@@ -1,4 +1,8 @@
-//! Shared vocabulary for the WAGA tick kernel.
+//! Shared vocabulary for the WAGA tick kernel and event log spine.
+
+mod event;
+
+pub use event::*;
 
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
@@ -26,7 +30,7 @@ pub enum WagaError {
     Msg(String),
 }
 
-/// Git facts observed for a single tick.
+/// Git facts observed for a single tick (also projected from events).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GitStatus {
     pub repo_path: PathBuf,
@@ -41,7 +45,7 @@ pub struct StoryState {
     pub theme: Option<String>,
 }
 
-/// Persistent “what is true now” snapshot for the park.
+/// Persistent “what is true now” snapshot — **projection cache**, not ground truth.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorldSnapshot {
     pub tick: u64,
@@ -68,7 +72,6 @@ impl WorldSnapshot {
 
 /// Best-effort timezone label for display.
 pub fn iana_timezone_or_offset() -> String {
-    // chrono Local offset is always available; IANA name needs OS help.
     let offset = Local::now().offset().local_minus_utc();
     let hours = offset / 3600;
     let mins = (offset.abs() % 3600) / 60;
@@ -79,8 +82,9 @@ pub fn iana_timezone_or_offset() -> String {
     }
 }
 
-/// One append-only narrative line after a tick.
+/// Legacy flat narrative line (no longer written by tick; kept for serde compat).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[deprecated(note = "use Event log instead of narrative.jsonl")]
 pub struct NarrativeEntry {
     pub tick: u64,
     pub at: DateTime<Local>,
@@ -90,12 +94,13 @@ pub struct NarrativeEntry {
     pub pet_mood: String,
 }
 
-/// Outcome of a full tick (world + character + pet).
+/// Outcome of a full tick (world + character + pet + events).
 #[derive(Debug, Clone)]
 pub struct TickResult {
     pub snapshot: WorldSnapshot,
     pub notice: String,
     pub pet_mood: String,
+    pub new_event_ids: Vec<EventId>,
 }
 
 #[cfg(test)]

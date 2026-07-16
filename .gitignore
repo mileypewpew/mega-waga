@@ -1,6 +1,8 @@
 /target
 **/*.rs.bk
 .waga/
+.waga-*/
+
 .DS_Store
 *.swp
 *.swo

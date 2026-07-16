@@ -93,10 +93,15 @@ Authoritative v0 design: [docs/superpowers/specs/2026-07-16-tick-kernel-v0-desig
 See [roadmap.md](./roadmap.md). **Tick Kernel v0 + Waga pet** is implemented.
 
 ```bash
+export PATH="$HOME/.cargo/bin:$PATH"   # rustup cargo, not distro 1.75
 cargo test --workspace
 cargo run -p waga-tui -- tick
+cargo run -p waga-tui -- events --last 10
+cargo run -p waga-tui -- stories
 cargo run -p waga-tui -- pet
 ```
+
+Event log spine: `events.jsonl` is canonical; see `docs/superpowers/specs/2026-07-16-event-log-spine-design.md`.
 
 ### Build note (no system gcc)
 

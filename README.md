@@ -53,11 +53,15 @@ cargo build -p waga-tui --release
 ### Demo: tick the park
 
 ```bash
-# One headless tick (writes .waga/world.json + narrative.jsonl)
+# One headless tick (appends .waga/events.jsonl; caches world.json)
 cargo run -p waga-tui -- tick
 
 # Use the Strict CTO persona file
 cargo run -p waga-tui -- tick --persona personas/strict-cto.toml
+
+# Inspect the event spine
+cargo run -p waga-tui -- events --last 20
+cargo run -p waga-tui -- stories
 
 # Meet the Waga pet (Ratatui). Keys: t/r = tick, q = quit
 cargo run -p waga-tui -- pet
@@ -67,18 +71,23 @@ cargo run -p waga-tui -- pet
 
 1. Run `cargo run -p waga-tui -- tick` in this repo.  
 2. Edit a tracked file (or leave uncommitted changes) so git is dirty.  
-3. Tick again — notice should warn; pet mood becomes **grumpy**.  
-4. Commit/stash clean → tick → pet becomes **content**.
+3. Tick again — notice should warn; pet mood becomes **grumpy**; `waga stories` may show an open arc.  
+4. Commit/stash clean → tick → pet **content**; story may **close**.  
+5. `rm .waga/world.json` → `waga events` / next tick still rebuilds from **events.jsonl**.
 
-## Architecture (v0)
+## Architecture
 
 | Crate | Role |
 |-------|------|
-| `waga-core` | Shared types (`WorldSnapshot`, errors) |
-| `waga-world` | Sensors (clock + git), tick, `.waga/` persist |
+| `waga-core` | Shared types (`WorldSnapshot`, `Event`, `Story`, errors) |
+| **`waga-events`** | Append-only log, links, projection, story rules |
+| `waga-world` | Sensors + event-backed `run_tick` |
 | `waga-character` | Persona TOML + template notices |
 | `waga-pet` | Mood mapping + ASCII sprites |
-| `waga-tui` | Binary `waga`: `tick` + `pet` |
+| `waga-tui` | Binary `waga`: `tick` · `events` · `stories` · `pet` |
+
+**Truth:** `events.jsonl` is ground truth. `world.json` is a disposable projection cache.  
+`narrative.jsonl` is legacy (no longer written).
 
 Stack aligns with Grok Build: Rust, Cargo workspace, clap, ratatui/crossterm, serde, chrono, tracing. Greenfield (**Path A**), not a monorepo fork.
 
