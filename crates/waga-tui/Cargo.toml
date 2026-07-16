@@ -1,0 +1,23 @@
+[package]
+name = "waga-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "WAGA CLI and Ratatui Waga pet"
+default-run = "waga"
+
+[[bin]]
+name = "waga"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+crossterm = { workspace = true }
+ratatui = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+waga-character = { workspace = true }
+waga-core = { workspace = true }
+waga-pet = { workspace = true }
+waga-world = { workspace = true }

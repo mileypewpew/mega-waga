@@ -1,0 +1,17 @@
+[package]
+name = "waga-world"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "World Engine: sensors, snapshot persist, tick advance"
+
+[dependencies]
+chrono = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+waga-character = { workspace = true }
+waga-core = { workspace = true }
+waga-pet = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

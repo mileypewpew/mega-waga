@@ -1,0 +1,36 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/waga-core",
+    "crates/waga-world",
+    "crates/waga-character",
+    "crates/waga-pet",
+    "crates/waga-tui",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+authors = ["grok-waga contributors"]
+repository = "https://github.com/local/grok-waga"
+
+[workspace.dependencies]
+waga-core = { path = "crates/waga-core" }
+waga-world = { path = "crates/waga-world" }
+waga-character = { path = "crates/waga-character" }
+waga-pet = { path = "crates/waga-pet" }
+
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+crossterm = "0.28"
+ratatui = "0.29"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tempfile = "3"
