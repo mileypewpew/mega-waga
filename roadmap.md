@@ -1,6 +1,6 @@
 # Roadmap — grok-waga
 
-**Status:** Phase 1–2 complete (Tick Kernel v0 + Waga pet runnable)  
+**Status:** Event Log Spine v1 — design + plan approved, ready to implement  
 **Last updated:** 2026-07-16  
 
 This is a living map, not a contract. We move one phase at a time.
