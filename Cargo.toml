@@ -5,6 +5,8 @@ members = [
     "crates/waga-events",
     "crates/waga-memory",
     "crates/waga-voice",
+    "crates/waga-media",
+    "crates/waga-music",
     "crates/waga-world",
     "crates/waga-character",
     "crates/waga-pet",
@@ -23,10 +25,13 @@ waga-core = { path = "crates/waga-core" }
 waga-events = { path = "crates/waga-events" }
 waga-memory = { path = "crates/waga-memory" }
 waga-voice = { path = "crates/waga-voice" }
+waga-media = { path = "crates/waga-media" }
+waga-music = { path = "crates/waga-music" }
 waga-world = { path = "crates/waga-world" }
 waga-character = { path = "crates/waga-character" }
 waga-pet = { path = "crates/waga-pet" }
 uuid = { version = "1", features = ["v4", "serde"] }
+rosc = "0.10"
 
 anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }

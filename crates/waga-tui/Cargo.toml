@@ -23,4 +23,6 @@ waga-events = { workspace = true }
 waga-memory = { workspace = true }
 waga-pet = { workspace = true }
 waga-voice = { workspace = true }
+waga-media = { workspace = true }
+waga-music = { workspace = true }
 waga-world = { workspace = true }

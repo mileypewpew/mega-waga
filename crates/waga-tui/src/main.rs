@@ -13,7 +13,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::{Frame, Terminal};
 use std::io::stdout;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use waga_core::StoryStatus;
 use waga_events::{format_event_line, format_story_line, EventLog, StoryStore};
@@ -22,6 +22,11 @@ use waga_memory::{
     list_skills, skills_summary_line,
 };
 use waga_pet::{mood_from_snapshot, sprite, PetMood};
+use waga_media::{control, format_now_playing, now_playing, MediaCommand};
+use waga_music::{
+    bed_start, bed_steer, bed_stop, direct_from_world, format_music_status, waga_bed_line,
+    MusicSession,
+};
 use waga_voice::{
     example_voice_toml, load_voice_config, resolve_provider, speak, SpeakIntent, VoiceProvider,
 };
@@ -112,6 +117,58 @@ enum Commands {
     },
     /// Show park skill XP sheet.
     Skills {
+        #[arg(long, default_value = ".waga")]
+        data_dir: PathBuf,
+    },
+    /// Show what's currently playing (MPRIS / playerctl).
+    Now,
+    /// Control system media or Waga HumanMusic bed.
+    Music {
+        #[command(subcommand)]
+        action: MusicAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum MusicAction {
+    /// Resume playback (MPRIS).
+    Play,
+    /// Pause (MPRIS).
+    Pause,
+    /// Toggle play/pause (MPRIS).
+    Toggle,
+    /// Next track (MPRIS).
+    Next,
+    /// Previous track (MPRIS).
+    Prev,
+    /// Stop (MPRIS).
+    Stop,
+    /// HumanMusic SuperCollider live bed.
+    Bed {
+        #[command(subcommand)]
+        cmd: BedAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum BedAction {
+    /// Start bed (OSC + optional sclang).
+    Start {
+        #[arg(long, default_value = ".waga")]
+        data_dir: PathBuf,
+    },
+    /// Soft-stop bed (gate off).
+    Stop {
+        #[arg(long, default_value = ".waga")]
+        data_dir: PathBuf,
+    },
+    /// Re-steer from current world snapshot.
+    Steer {
+        #[arg(long, default_value = ".waga")]
+        data_dir: PathBuf,
+    },
+    /// Show bed session status.
+    Status {
         #[arg(long, default_value = ".waga")]
         data_dir: PathBuf,
     },
@@ -235,6 +292,71 @@ fn main() -> Result<()> {
                 }
             }
         }
+        Commands::Now => {
+            let np = now_playing();
+            println!("{}", format_now_playing(&np));
+            if let Ok(session) = MusicSession::load(PathBuf::from(".waga").as_path()) {
+                println!();
+                println!("{}", waga_bed_line(&session));
+            }
+        }
+        Commands::Music { action } => match action {
+            MusicAction::Play => {
+                control(MediaCommand::Play).map_err(|e| anyhow::anyhow!("{e}"))?;
+                println!("{}", format_now_playing(&now_playing()));
+            }
+            MusicAction::Pause => {
+                control(MediaCommand::Pause).map_err(|e| anyhow::anyhow!("{e}"))?;
+                println!("{}", format_now_playing(&now_playing()));
+            }
+            MusicAction::Toggle => {
+                control(MediaCommand::PlayPause).map_err(|e| anyhow::anyhow!("{e}"))?;
+                println!("{}", format_now_playing(&now_playing()));
+            }
+            MusicAction::Next => {
+                control(MediaCommand::Next).map_err(|e| anyhow::anyhow!("{e}"))?;
+                println!("{}", format_now_playing(&now_playing()));
+            }
+            MusicAction::Prev => {
+                control(MediaCommand::Previous).map_err(|e| anyhow::anyhow!("{e}"))?;
+                println!("{}", format_now_playing(&now_playing()));
+            }
+            MusicAction::Stop => {
+                control(MediaCommand::Stop).map_err(|e| anyhow::anyhow!("{e}"))?;
+                println!("{}", format_now_playing(&now_playing()));
+            }
+            MusicAction::Bed { cmd } => match cmd {
+                BedAction::Start { data_dir } => {
+                    // Ensure SC script is reachable from data dir
+                    let src = PathBuf::from("assets/sc/waga_bed.scd");
+                    let dst = data_dir.join("waga_bed.scd");
+                    if src.is_file() && !dst.is_file() {
+                        let _ = std::fs::create_dir_all(&data_dir);
+                        let _ = std::fs::copy(&src, &dst);
+                    }
+                    let snap = peek_snapshot(&data_dir, "strict-cto")?;
+                    let params = direct_from_world(&snap, &[]);
+                    let session =
+                        bed_start(&data_dir, params).map_err(|e| anyhow::anyhow!("{e}"))?;
+                    println!("{}", format_music_status(&session));
+                }
+                BedAction::Stop { data_dir } => {
+                    let session = bed_stop(&data_dir).map_err(|e| anyhow::anyhow!("{e}"))?;
+                    println!("{}", format_music_status(&session));
+                }
+                BedAction::Steer { data_dir } => {
+                    let snap = peek_snapshot(&data_dir, "strict-cto")?;
+                    let params = direct_from_world(&snap, &[]);
+                    let session =
+                        bed_steer(&data_dir, params).map_err(|e| anyhow::anyhow!("{e}"))?;
+                    println!("{}", format_music_status(&session));
+                }
+                BedAction::Status { data_dir } => {
+                    let session = MusicSession::load(&data_dir)?;
+                    println!("{}", format_music_status(&session));
+                }
+            },
+        },
     }
     Ok(())
 }
@@ -251,6 +373,8 @@ struct PetApp {
     memory_line: String,
     skills_line: String,
     story_line: String,
+    now_line: String,
+    bed_line: String,
     every: Duration,
     last_auto: Instant,
     voice: bool,
@@ -276,6 +400,8 @@ impl PetApp {
             memory_line: String::new(),
             skills_line: String::new(),
             story_line: "story: —".into(),
+            now_line: String::new(),
+            bed_line: String::new(),
             every: Duration::from_secs(every_secs),
             last_auto: Instant::now(),
             voice,
@@ -319,6 +445,10 @@ impl PetApp {
             .find(|s| s.status == StoryStatus::Open)
             .map(|s| format!("story: OPEN \"{}\"", s.title))
             .unwrap_or_else(|| "story: none open".into());
+        self.now_line = now_playing().display_line();
+        self.bed_line = MusicSession::load(&self.data_dir)
+            .map(|s| waga_bed_line(&s))
+            .unwrap_or_else(|_| "♫ bed: ?".into());
         Ok(())
     }
 
@@ -408,6 +538,33 @@ fn pet_loop(
                             app.status = format!("tick error: {e}");
                         }
                     }
+                    KeyCode::Char(' ') => {
+                        match control(MediaCommand::PlayPause) {
+                            Ok(()) => {
+                                app.now_line = now_playing().display_line();
+                                app.status = "media toggle".into();
+                            }
+                            Err(e) => app.status = format!("media: {e}"),
+                        }
+                    }
+                    KeyCode::Char('n') => {
+                        match control(MediaCommand::Next) {
+                            Ok(()) => {
+                                app.now_line = now_playing().display_line();
+                                app.status = "media next".into();
+                            }
+                            Err(e) => app.status = format!("media: {e}"),
+                        }
+                    }
+                    KeyCode::Char('p') => {
+                        match control(MediaCommand::Previous) {
+                            Ok(()) => {
+                                app.now_line = now_playing().display_line();
+                                app.status = "media prev".into();
+                            }
+                            Err(e) => app.status = format!("media: {e}"),
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -421,7 +578,8 @@ fn draw_pet(f: &mut Frame, app: &PetApp) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3),
-            Constraint::Min(7),
+            Constraint::Min(6),
+            Constraint::Length(4),
             Constraint::Length(4),
             Constraint::Length(4),
             Constraint::Length(3),
@@ -476,10 +634,19 @@ fn draw_pet(f: &mut Frame, app: &PetApp) {
     );
     f.render_widget(growth, chunks[3]);
 
+    let media = Paragraph::new(format!("{}\n{}", app.now_line, app.bed_line))
+        .wrap(Wrap { trim: true })
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("media · HumanMusic"),
+        );
+    f.render_widget(media, chunks[4]);
+
     let footer = Paragraph::new(format!(
-        "{}  |  {}  |  keys: t/r tick · q quit",
+        "{}  |  {}  |  keys: t tick · space play/pause · n/p track · q quit",
         app.git_line, app.status
     ))
     .block(Block::default().borders(Borders::ALL).title("sensors"));
-    f.render_widget(footer, chunks[4]);
+    f.render_widget(footer, chunks[5]);
 }

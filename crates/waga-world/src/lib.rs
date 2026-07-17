@@ -15,6 +15,7 @@ use waga_events::{
 };
 use waga_memory::{commit_memory_outcome, process_new_events, recent_memories};
 use waga_pet::{mood_from_snapshot, PetMood};
+use waga_music::on_tick_music;
 use waga_voice::{load_voice_config, notify_lines_from_events, speak_notify_lines};
 
 /// Paths under a data directory (default `.waga`).
@@ -303,7 +304,7 @@ pub fn run_tick_with(
     }
 
     let mut all = history;
-    all.extend(batch);
+    all.extend(batch.clone());
     let snapshot = project_world(&all, &persona.id);
     // Prefer notice we just emitted for last_beat clarity
     let mut snapshot = snapshot;
@@ -311,6 +312,11 @@ pub fn run_tick_with(
         snapshot.story.last_beat = notice.clone();
     }
     save_snapshot(&paths, &snapshot)?;
+
+    // HumanMusic: steer live bed if running
+    if let Err(e) = on_tick_music(root, &snapshot, &batch) {
+        tracing::debug!("music steer: {e}");
+    }
 
     Ok(TickResult {
         snapshot,

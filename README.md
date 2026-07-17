@@ -77,10 +77,25 @@ cargo run -p waga-tui -- say "Hello from the park"
 cargo run -p waga-tui -- tick
 cargo run -p waga-tui -- tick --no-voice
 
-# Meet the Waga pet (Ratatui). Keys: t/r = tick, q = quit
-# Pet shows speech (with memory recall), story, last memory, skills
+# Media + HumanMusic
+cargo run -p waga-tui -- now                 # what's playing (MPRIS)
+cargo run -p waga-tui -- music toggle        # play/pause
+cargo run -p waga-tui -- music next
+cargo run -p waga-tui -- music bed start     # SuperCollider live bed
+cargo run -p waga-tui -- music bed status
+cargo run -p waga-tui -- music bed stop
+
+# Meet the Waga pet (Ratatui). Keys: t tick · space media · n/p track · q quit
 cargo run -p waga-tui -- pet
 ```
+
+### HumanMusic (SuperCollider)
+
+1. Install SuperCollider (`sclang`)  
+2. Optional: open `assets/sc/waga_bed.scd` in the SC IDE and run it  
+3. `waga music bed start` — OSC steers tension/BPM from park state  
+4. Dirty/clean ticks reshape the bed while it runs  
+5. **Lyria RealTime** is the planned cloud backup backend (same MusicDirector)
 
 ### Voice setup
 
@@ -105,6 +120,8 @@ cargo run -p waga-tui -- pet
 | **`waga-events`** | Append-only log, links, projection, story rules |
 | **`waga-memory`** | Classified memories + park skill XP |
 | **`waga-voice`** | Premium TTS: xAI · OpenAI · ElevenLabs |
+| **`waga-media`** | Now playing + MPRIS control (`playerctl`) |
+| **`waga-music`** | HumanMusic director + SuperCollider bed |
 | `waga-world` | Sensors + event-backed `run_tick` |
 | `waga-character` | Persona TOML + template notices |
 | `waga-pet` | Mood mapping + ASCII sprites |

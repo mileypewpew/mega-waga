@@ -451,6 +451,7 @@ pub fn format_park_status(
     if snapshot.git.as_ref().map(|g| !g.dirty).unwrap_or(true) {
         lines.push("hint: dirty the tree, tick, clean, tick → memory + XP".into());
     }
+    lines.push("media: waga now · music: waga music … · bed: waga music bed start".into());
     Ok(lines.join("\n"))
 }
 

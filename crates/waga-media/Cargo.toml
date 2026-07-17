@@ -1,0 +1,11 @@
+[package]
+name = "waga-media"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Now playing + media control (MPRIS via playerctl)"
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
