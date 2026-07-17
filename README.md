@@ -137,6 +137,7 @@ Stack aligns with Grok Build: Rust, Cargo workspace, clap, ratatui/crossterm, se
 | Doc | Purpose |
 |-----|---------|
 | [AGENTS.md](./AGENTS.md) | How humans & agents work here |
+| [Handoff for local Grok Build](./docs/handoffs/2026-07-17-local-dev-grok-build.md) | Continue on another machine / session |
 | [roadmap.md](./roadmap.md) | Phases and product decisions |
 | [Tick Kernel design](./docs/superpowers/specs/2026-07-16-tick-kernel-v0-design.md) | v0 design |
 | [Implementation plan](./docs/superpowers/plans/2026-07-16-tick-kernel-v0.md) | Build plan |
