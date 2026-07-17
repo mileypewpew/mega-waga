@@ -381,6 +381,79 @@ pub fn format_skill_line(s: &SkillState) -> String {
     format!("{}  xp={}  level={}", s.skill_id, s.xp, s.level)
 }
 
+/// Most recent memories first (index is append order).
+pub fn recent_memories(root: &Path, limit: usize) -> Result<Vec<Memory>> {
+    let mut mems = list_memories(root)?;
+    if limit == 0 || mems.is_empty() {
+        return Ok(mems);
+    }
+    let start = mems.len().saturating_sub(limit);
+    Ok(mems.split_off(start))
+}
+
+/// Compact skill strip for pet/status (e.g. `repo_hygiene L0/10xp`).
+pub fn skills_summary_line(root: &Path) -> Result<String> {
+    let mut skills = list_skills(root)?;
+    if skills.is_empty() {
+        return Ok("skills: (none yet)".into());
+    }
+    skills.sort_by(|a, b| a.skill_id.cmp(&b.skill_id));
+    let parts: Vec<String> = skills
+        .iter()
+        .map(|s| format!("{} L{}/{}xp", s.skill_id, s.level, s.xp))
+        .collect();
+    Ok(format!("skills: {}", parts.join(" · ")))
+}
+
+/// One-line last memory for pet footer.
+pub fn last_memory_line(root: &Path) -> Result<String> {
+    let mems = recent_memories(root, 1)?;
+    match mems.last() {
+        Some(m) => Ok(format!("memory: [{}] {}", m.class, m.title)),
+        None => Ok("memory: (none — dirty→clean a tree to learn)".into()),
+    }
+}
+
+/// Full multi-line park status for `waga status`.
+pub fn format_park_status(
+    root: &Path,
+    snapshot: &waga_core::WorldSnapshot,
+    open_story_title: Option<&str>,
+) -> Result<String> {
+    let git = match &snapshot.git {
+        Some(g) => format!(
+            "{} @ {} ({})",
+            g.branch,
+            g.repo_path.display(),
+            if g.dirty { "DIRTY" } else { "clean" }
+        ),
+        None => "(no git)".into(),
+    };
+    let story = open_story_title
+        .map(|t| format!("OPEN \"{t}\""))
+        .unwrap_or_else(|| "none open".into());
+    let mem_line = last_memory_line(root)?;
+    let skill_line = skills_summary_line(root)?;
+    let recent = recent_memories(root, 3)?;
+    let mut lines = vec![
+        format!("tick {}  |  persona {}  |  {}", snapshot.tick, snapshot.active_persona, snapshot.timezone),
+        format!("git: {git}"),
+        format!("story: {story}"),
+        mem_line,
+        skill_line,
+    ];
+    if !recent.is_empty() {
+        lines.push("recent memories:".into());
+        for m in recent.iter().rev() {
+            lines.push(format!("  - [{}] {}", m.class, m.title));
+        }
+    }
+    if snapshot.git.as_ref().map(|g| !g.dirty).unwrap_or(true) {
+        lines.push("hint: dirty the tree, tick, clean, tick → memory + XP".into());
+    }
+    Ok(lines.join("\n"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -463,6 +536,29 @@ mod tests {
         fs::remove_file(dir.path().join("skills.json")).unwrap();
         let rebuilt = SkillStore::rebuild_from_events(&log.load_all().unwrap());
         assert_eq!(rebuilt.get(SKILL_REPO_HYGIENE).unwrap().xp, 10);
+    }
+
+    #[test]
+    fn recent_and_summary_helpers() {
+        let dir = tempfile::tempdir().unwrap();
+        let close = make_event(
+            1,
+            "system",
+            EventBody::StoryClosed {
+                story_id: StoryId("sty_z".into()),
+                summary: "clean".into(),
+            },
+        );
+        let out = process_new_events(&[close], 1);
+        let log = EventLog::open(dir.path()).unwrap();
+        log.append(&out.events).unwrap();
+        commit_memory_outcome(dir.path(), &out).unwrap();
+        let recent = recent_memories(dir.path(), 1).unwrap();
+        assert_eq!(recent.len(), 1);
+        let skills = skills_summary_line(dir.path()).unwrap();
+        assert!(skills.contains("repo_hygiene"));
+        let last = last_memory_line(dir.path()).unwrap();
+        assert!(last.contains("episodic") || last.contains("Episodic") || last.contains('['));
     }
 
     #[test]

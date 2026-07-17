@@ -1,4 +1,4 @@
-//! WAGA CLI: `waga tick` and `waga pet` (Ratatui companion).
+//! WAGA CLI: tick, events, stories, memories, skills, status, pet.
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -7,7 +7,7 @@ use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
@@ -15,8 +15,12 @@ use ratatui::{Frame, Terminal};
 use std::io::stdout;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
+use waga_core::StoryStatus;
 use waga_events::{format_event_line, format_story_line, EventLog, StoryStore};
-use waga_memory::{format_memory_line, format_skill_line, list_memories, list_skills};
+use waga_memory::{
+    format_memory_line, format_park_status, format_skill_line, last_memory_line, list_memories,
+    list_skills, skills_summary_line,
+};
 use waga_pet::{mood_from_snapshot, sprite, PetMood};
 use waga_world::{format_tick_summary, peek_snapshot, run_tick};
 
@@ -35,30 +39,26 @@ struct Cli {
 enum Commands {
     /// Advance the park by one tick (headless; appends to events.jsonl).
     Tick {
-        /// Data directory for events.jsonl + projection cache
         #[arg(long, default_value = ".waga")]
         data_dir: PathBuf,
-
-        /// Optional persona TOML path
         #[arg(long)]
         persona: Option<PathBuf>,
-
-        /// Optional git repo path (default: discover from cwd)
         #[arg(long)]
         repo: Option<PathBuf>,
+    },
+    /// One-screen park snapshot (git, story, memory, skills).
+    Status {
+        #[arg(long, default_value = ".waga")]
+        data_dir: PathBuf,
     },
     /// Show the Waga pet (Ratatui). Keys: t tick, r refresh, q quit.
     Pet {
         #[arg(long, default_value = ".waga")]
         data_dir: PathBuf,
-
         #[arg(long)]
         persona: Option<PathBuf>,
-
         #[arg(long)]
         repo: Option<PathBuf>,
-
-        /// Auto-tick interval in seconds (0 = manual only)
         #[arg(long, default_value_t = 10)]
         every: u64,
     },
@@ -107,6 +107,19 @@ fn main() -> Result<()> {
             let result = run_tick(&data_dir, persona.as_deref(), repo.as_deref())
                 .context("tick failed")?;
             println!("{}", format_tick_summary(&result));
+        }
+        Commands::Status { data_dir } => {
+            let snap = peek_snapshot(&data_dir, "strict-cto").context("peek world")?;
+            let store = StoryStore::load(&data_dir).context("stories")?;
+            let open = store
+                .stories
+                .iter()
+                .find(|s| s.status == StoryStatus::Open)
+                .map(|s| s.title.as_str());
+            println!(
+                "{}",
+                format_park_status(&data_dir, &snap, open).context("status")?
+            );
         }
         Commands::Pet {
             data_dir,
@@ -171,6 +184,9 @@ struct PetApp {
     tick: u64,
     git_line: String,
     status: String,
+    memory_line: String,
+    skills_line: String,
+    story_line: String,
     every: Duration,
     last_auto: Instant,
 }
@@ -191,13 +207,17 @@ impl PetApp {
             tick: 0,
             git_line: "git: (none)".into(),
             status: String::new(),
+            memory_line: String::new(),
+            skills_line: String::new(),
+            story_line: "story: —".into(),
             every: Duration::from_secs(every_secs),
             last_auto: Instant::now(),
         };
-        // Load last snapshot if present, else tick once so the pet has life.
         match peek_snapshot(&app.data_dir, "strict-cto") {
             Ok(s) if s.tick > 0 => {
-                app.apply_snapshot(&s, waga_character::strict_cto_builtin().notice(&s));
+                let notice = waga_character::strict_cto_builtin().notice(&s);
+                app.apply_snapshot(&s, notice);
+                app.refresh_growth()?;
             }
             _ => {
                 app.do_tick()?;
@@ -221,6 +241,20 @@ impl PetApp {
         };
     }
 
+    fn refresh_growth(&mut self) -> Result<()> {
+        self.memory_line = last_memory_line(&self.data_dir).unwrap_or_else(|_| "memory: ?".into());
+        self.skills_line =
+            skills_summary_line(&self.data_dir).unwrap_or_else(|_| "skills: ?".into());
+        let store = StoryStore::load(&self.data_dir)?;
+        self.story_line = store
+            .stories
+            .iter()
+            .find(|s| s.status == StoryStatus::Open)
+            .map(|s| format!("story: OPEN \"{}\"", s.title))
+            .unwrap_or_else(|| "story: none open".into());
+        Ok(())
+    }
+
     fn do_tick(&mut self) -> Result<()> {
         let result = run_tick(
             &self.data_dir,
@@ -228,7 +262,11 @@ impl PetApp {
             self.repo.as_deref(),
         )?;
         self.apply_snapshot(&result.snapshot, result.notice);
-        self.status = format!("ticked → {}", result.pet_mood);
+        self.status = format!(
+            "ticked → {} · mem+{} xp+{}",
+            result.pet_mood, result.memories_formed, result.xp_granted
+        );
+        self.refresh_growth()?;
         self.last_auto = Instant::now();
         Ok(())
     }
@@ -256,11 +294,13 @@ fn run_pet_ui(
     res
 }
 
-fn pet_loop(terminal: &mut Terminal<impl ratatui::backend::Backend>, app: &mut PetApp) -> Result<()> {
+fn pet_loop(
+    terminal: &mut Terminal<impl ratatui::backend::Backend>,
+    app: &mut PetApp,
+) -> Result<()> {
     loop {
         terminal.draw(|f| draw_pet(f, app))?;
 
-        // Auto-tick
         if !app.every.is_zero() && app.last_auto.elapsed() >= app.every {
             if let Err(e) = app.do_tick() {
                 app.status = format!("auto-tick error: {e}");
@@ -298,8 +338,9 @@ fn draw_pet(f: &mut Frame, app: &PetApp) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3),
-            Constraint::Min(8),
-            Constraint::Length(5),
+            Constraint::Min(7),
+            Constraint::Length(4),
+            Constraint::Length(4),
             Constraint::Length(3),
         ])
         .split(f.area());
@@ -336,17 +377,26 @@ fn draw_pet(f: &mut Frame, app: &PetApp) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title("speech (persona)"),
+                .title("speech (persona + memory)"),
         );
     f.render_widget(bubble, chunks[2]);
+
+    let growth = Paragraph::new(format!(
+        "{}\n{}\n{}",
+        app.story_line, app.memory_line, app.skills_line
+    ))
+    .wrap(Wrap { trim: true })
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("growth (park)"),
+    );
+    f.render_widget(growth, chunks[3]);
 
     let footer = Paragraph::new(format!(
         "{}  |  {}  |  keys: t/r tick · q quit",
         app.git_line, app.status
     ))
     .block(Block::default().borders(Borders::ALL).title("sensors"));
-    f.render_widget(footer, chunks[3]);
-
-    // Silence unused warning if Rect helpers change
-    let _: Rect = chunks[0];
+    f.render_widget(footer, chunks[4]);
 }

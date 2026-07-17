@@ -33,13 +33,37 @@ impl Persona {
 
     /// Produce an in-character notice from the current world snapshot.
     pub fn notice(&self, snapshot: &WorldSnapshot) -> String {
+        self.notice_with_memories(snapshot, &[])
+    }
+
+    /// Notice plus optional recent memory titles (park learning context).
+    pub fn notice_with_memories(
+        &self,
+        snapshot: &WorldSnapshot,
+        recent_memory_titles: &[&str],
+    ) -> String {
         let template = match &snapshot.git {
             Some(g) if g.dirty => &self.templates.git_dirty,
             Some(_) => &self.templates.git_clean,
             None => &self.templates.default,
         };
-        fill_template(template, snapshot)
+        let mut base = fill_template(template, snapshot);
+        if let Some(extra) = format_memory_aside(recent_memory_titles) {
+            base.push(' ');
+            base.push_str(&extra);
+        }
+        base
     }
+}
+
+/// Strict CTO-style aside from recent park memories (no invented facts).
+fn format_memory_aside(titles: &[&str]) -> Option<String> {
+    if titles.is_empty() {
+        return None;
+    }
+    let n = titles.len().min(2);
+    let joined = titles[..n].join("; ");
+    Some(format!("(recalling: {joined})"))
 }
 
 fn fill_template(template: &str, snapshot: &WorldSnapshot) -> String {
@@ -110,6 +134,18 @@ mod tests {
         let notice = p.notice(&s);
         assert!(notice.contains("7"));
         assert!(notice.contains("Standing by"));
+    }
+
+    #[test]
+    fn notice_includes_memory_aside() {
+        let p = strict_cto_builtin();
+        let notice = p.notice_with_memories(
+            &snap_with_git(false),
+            &["Tree clean on main", "Pet recovered"],
+        );
+        assert!(notice.contains("clean"));
+        assert!(notice.contains("recalling:"));
+        assert!(notice.contains("Tree clean on main"));
     }
 
     #[test]

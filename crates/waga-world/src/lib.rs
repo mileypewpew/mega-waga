@@ -13,7 +13,7 @@ use waga_events::{
     apply_git_story_rules, link_members_to_open_story, make_event, project_world, EventLog,
     GitStoryInput, StoryStore,
 };
-use waga_memory::{commit_memory_outcome, process_new_events};
+use waga_memory::{commit_memory_outcome, process_new_events, recent_memories};
 use waga_pet::{mood_from_snapshot, PetMood};
 
 /// Paths under a data directory (default `.waga`).
@@ -180,7 +180,13 @@ pub fn run_tick(
     interim.timezone = tz;
     interim.git = git.clone();
     interim.active_persona = persona.id.clone();
-    let notice = persona.notice(&interim);
+    let prior_titles: Vec<String> = recent_memories(root, 2)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|m| m.title)
+        .collect();
+    let title_refs: Vec<&str> = prior_titles.iter().map(|s| s.as_str()).collect();
+    let notice = persona.notice_with_memories(&interim, &title_refs);
     interim.story.last_beat = notice.clone();
 
     let mut persona_ev = make_event(

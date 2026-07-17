@@ -67,7 +67,11 @@ cargo run -p waga-tui -- stories
 cargo run -p waga-tui -- memories
 cargo run -p waga-tui -- skills
 
+# One-screen park snapshot
+cargo run -p waga-tui -- status
+
 # Meet the Waga pet (Ratatui). Keys: t/r = tick, q = quit
+# Pet shows speech (with memory recall), story, last memory, skills
 cargo run -p waga-tui -- pet
 ```
 
@@ -89,7 +93,7 @@ cargo run -p waga-tui -- pet
 | `waga-world` | Sensors + event-backed `run_tick` |
 | `waga-character` | Persona TOML + template notices |
 | `waga-pet` | Mood mapping + ASCII sprites |
-| `waga-tui` | Binary `waga`: `tick` · `events` · `stories` · `memories` · `skills` · `pet` |
+| `waga-tui` | Binary `waga`: `tick` · `status` · `events` · `stories` · `memories` · `skills` · `pet` |
 
 **Truth:** `events.jsonl` is ground truth. `world.json` / `skills.json` are projection caches.  
 Memories live in `memories.jsonl` (index) + `MemoryFormed` events. XP is park-wide (not per persona).
