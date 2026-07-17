@@ -20,5 +20,6 @@ tracing-subscriber = { workspace = true }
 waga-character = { workspace = true }
 waga-core = { workspace = true }
 waga-events = { workspace = true }
+waga-memory = { workspace = true }
 waga-pet = { workspace = true }
 waga-world = { workspace = true }

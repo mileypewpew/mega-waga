@@ -1,6 +1,6 @@
 # Roadmap — grok-waga
 
-**Status:** Event Log Spine v1 **implemented** (events.jsonl + stories + CLI)  
+**Status:** Memory + XP v1 **implemented** (classified memories, park skill sheet)  
 **Last updated:** 2026-07-16  
 
 This is a living map, not a contract. We move one phase at a time.

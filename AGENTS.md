@@ -98,10 +98,13 @@ cargo test --workspace
 cargo run -p waga-tui -- tick
 cargo run -p waga-tui -- events --last 10
 cargo run -p waga-tui -- stories
+cargo run -p waga-tui -- memories
+cargo run -p waga-tui -- skills
 cargo run -p waga-tui -- pet
 ```
 
-Event log spine: `events.jsonl` is canonical; see `docs/superpowers/specs/2026-07-16-event-log-spine-design.md`.
+Event log spine: `events.jsonl` is canonical.  
+Memory + park XP: `docs/superpowers/specs/2026-07-16-memory-xp-design.md`.
 
 ### Build note (no system gcc)
 

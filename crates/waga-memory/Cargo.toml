@@ -1,19 +1,18 @@
 [package]
-name = "waga-world"
+name = "waga-memory"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "World Engine: sensors, event-backed tick, projection cache"
+description = "Classified memories and park skill XP"
 
 [dependencies]
 chrono = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
-waga-character = { workspace = true }
+uuid = { workspace = true }
 waga-core = { workspace = true }
 waga-events = { workspace = true }
-waga-memory = { workspace = true }
-waga-pet = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -1110,6 +1110,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "waga-memory"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "uuid",
+ "waga-core",
+ "waga-events",
+]
+
+[[package]]
 name = "waga-pet"
 version = "0.1.0"
 dependencies = [
@@ -1129,6 +1143,7 @@ dependencies = [
  "waga-character",
  "waga-core",
  "waga-events",
+ "waga-memory",
  "waga-pet",
  "waga-world",
 ]
@@ -1144,6 +1159,7 @@ dependencies = [
  "waga-character",
  "waga-core",
  "waga-events",
+ "waga-memory",
  "waga-pet",
 ]
 

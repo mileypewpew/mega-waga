@@ -1,6 +1,6 @@
 # Memory + XP v1 — Design
 
-**Status:** Draft for user review (beneficiary locked: **Park / user**)  
+**Status:** Approved and implemented (park / user XP)  
 **Date:** 2026-07-16  
 **Project:** grok-waga  
 **Depends on:** [Event Log Spine](./2026-07-16-event-log-spine-design.md)  

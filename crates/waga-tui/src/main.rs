@@ -16,6 +16,7 @@ use std::io::stdout;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use waga_events::{format_event_line, format_story_line, EventLog, StoryStore};
+use waga_memory::{format_memory_line, format_skill_line, list_memories, list_skills};
 use waga_pet::{mood_from_snapshot, sprite, PetMood};
 use waga_world::{format_tick_summary, peek_snapshot, run_tick};
 
@@ -73,6 +74,18 @@ enum Commands {
         #[arg(long, default_value = ".waga")]
         data_dir: PathBuf,
     },
+    /// List classified park memories.
+    Memories {
+        #[arg(long, default_value = ".waga")]
+        data_dir: PathBuf,
+        #[arg(long, default_value_t = 20)]
+        last: usize,
+    },
+    /// Show park skill XP sheet.
+    Skills {
+        #[arg(long, default_value = ".waga")]
+        data_dir: PathBuf,
+    },
 }
 
 fn main() -> Result<()> {
@@ -121,6 +134,27 @@ fn main() -> Result<()> {
             } else {
                 for s in &store.stories {
                     println!("{}", format_story_line(s));
+                }
+            }
+        }
+        Commands::Memories { data_dir, last } => {
+            let mems = list_memories(&data_dir).context("load memories")?;
+            if mems.is_empty() {
+                println!("(no memories yet — close a git story with a clean tree)");
+            } else {
+                let start = mems.len().saturating_sub(last);
+                for m in &mems[start..] {
+                    println!("{}", format_memory_line(m));
+                }
+            }
+        }
+        Commands::Skills { data_dir } => {
+            let skills = list_skills(&data_dir).context("load skills")?;
+            if skills.is_empty() {
+                println!("(no XP yet — park skill sheet is empty)");
+            } else {
+                for s in skills {
+                    println!("{}", format_skill_line(&s));
                 }
             }
         }

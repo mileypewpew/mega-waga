@@ -123,7 +123,9 @@ pub fn project_world(events: &[Event], default_persona: &str) -> WorldSnapshot {
                 snap.story.last_beat = format!("story closed: {summary}");
                 snap.tick = snap.tick.max(e.tick);
             }
-            EventBody::PetMoodChanged { .. } => {
+            EventBody::PetMoodChanged { .. }
+            | EventBody::MemoryFormed { .. }
+            | EventBody::XpGranted { .. } => {
                 snap.tick = snap.tick.max(e.tick);
             }
         }
@@ -367,6 +369,17 @@ pub fn format_event_line(e: &Event) -> String {
         EventBody::StoryClosed { story_id, summary } => {
             format!("StoryClosed {story_id} \"{summary}\"")
         }
+        EventBody::MemoryFormed {
+            memory_id,
+            class,
+            title,
+        } => format!("MemoryFormed {memory_id} [{class}] \"{title}\""),
+        EventBody::XpGranted {
+            skill_id,
+            amount,
+            reason,
+            ..
+        } => format!("XpGranted {skill_id}+{amount} ({reason})"),
     };
     let links: Vec<String> = e
         .links

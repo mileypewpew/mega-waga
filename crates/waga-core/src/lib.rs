@@ -1,8 +1,10 @@
 //! Shared vocabulary for the WAGA tick kernel and event log spine.
 
 mod event;
+mod memory;
 
 pub use event::*;
+pub use memory::*;
 
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
@@ -101,6 +103,10 @@ pub struct TickResult {
     pub notice: String,
     pub pet_mood: String,
     pub new_event_ids: Vec<EventId>,
+    /// How many classified memories were formed this tick.
+    pub memories_formed: usize,
+    /// Total XP granted this tick (all park skills).
+    pub xp_granted: u32,
 }
 
 #[cfg(test)]

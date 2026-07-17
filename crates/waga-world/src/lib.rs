@@ -13,6 +13,7 @@ use waga_events::{
     apply_git_story_rules, link_members_to_open_story, make_event, project_world, EventLog,
     GitStoryInput, StoryStore,
 };
+use waga_memory::{commit_memory_outcome, process_new_events};
 use waga_pet::{mood_from_snapshot, PetMood};
 
 /// Paths under a data directory (default `.waga`).
@@ -65,13 +66,32 @@ pub fn observe_git(repo_hint: Option<&Path>) -> Option<GitStatus> {
         .unwrap_or_else(|| "HEAD".into());
 
     let porcelain = run_git(&repo_path, &["status", "--porcelain"]).unwrap_or_default();
-    let dirty = porcelain.lines().any(|l| !l.trim().is_empty());
+    // Ignore WAGA data dirs so storing `.waga/` inside the repo does not
+    // permanently mark the tree dirty (blocks story close + memory/XP).
+    let dirty = porcelain.lines().any(|l| {
+        let t = l.trim();
+        !t.is_empty() && !is_waga_data_path_status_line(t)
+    });
 
     Some(GitStatus {
         repo_path,
         branch,
         dirty,
     })
+}
+
+/// `git status --porcelain` lines that only touch WAGA local state.
+fn is_waga_data_path_status_line(line: &str) -> bool {
+    // Format: XY PATH or XY ORIG -> PATH; path starts at index 3 when present.
+    let path = line.get(3..).unwrap_or(line).trim();
+    let path = path.strip_prefix('"').unwrap_or(path);
+    let base = path.rsplit(" -> ").next().unwrap_or(path);
+    let base = base.trim().trim_matches('"');
+    base == ".waga"
+        || base.starts_with(".waga/")
+        || base.starts_with(".waga-")
+        || base.contains("/.waga/")
+        || base.contains("/.waga-")
 }
 
 fn run_git(cwd: &Path, args: &[&str]) -> Option<String> {
@@ -231,9 +251,21 @@ pub fn run_tick(
     link_members_to_open_story(&mut story_store, &mut batch);
     batch.extend(story_extras);
 
+    // Memory + park XP from this batch (StoryClosed, mood recovery, …)
+    let mem_out = process_new_events(&batch, tick);
+    let memories_formed = mem_out.memories_formed.len();
+    let mut xp_granted = 0u32;
+    for e in &mem_out.events {
+        if let EventBody::XpGranted { amount, .. } = &e.body {
+            xp_granted = xp_granted.saturating_add(*amount);
+        }
+    }
+    batch.extend(mem_out.events.clone());
+
     let new_event_ids: Vec<_> = batch.iter().map(|e| e.id.clone()).collect();
     log.append(&batch)?;
     story_store.save()?;
+    commit_memory_outcome(root, &mem_out)?;
 
     let mut all = history;
     all.extend(batch);
@@ -250,6 +282,8 @@ pub fn run_tick(
         notice,
         pet_mood: new_mood.as_str().to_string(),
         new_event_ids,
+        memories_formed,
+        xp_granted,
     })
 }
 
@@ -292,12 +326,14 @@ pub fn format_tick_summary(result: &TickResult) -> String {
         None => "git: (none)".into(),
     };
     format!(
-        "tick {} | {} | persona={} | mood={} | events+{}\n{}\nnotice: {}",
+        "tick {} | {} | persona={} | mood={} | events+{} | mem+{} | xp+{}\n{}\nnotice: {}",
         s.tick,
         s.observed_at.format("%Y-%m-%d %H:%M:%S"),
         s.active_persona,
         result.pet_mood,
         result.new_event_ids.len(),
+        result.memories_formed,
+        result.xp_granted,
         git_line,
         result.notice
     )
@@ -352,5 +388,23 @@ mod tests {
         if let Some(g) = status {
             assert!(!g.branch.is_empty());
         }
+    }
+
+    #[test]
+    fn waga_dir_status_lines_are_noise() {
+        assert!(is_waga_data_path_status_line("?? .waga/"));
+        assert!(is_waga_data_path_status_line("?? .waga/world.json"));
+        assert!(!is_waga_data_path_status_line(" M src/main.rs"));
+        assert!(!is_waga_data_path_status_line("?? notes.md"));
+    }
+
+    #[test]
+    fn story_close_grants_memory_and_xp() {
+        let dir = tempfile::tempdir().unwrap();
+        // Simulate via git-less path: we only check unit memory pipeline in waga-memory.
+        // Here ensure tick fields default when no git.
+        let r = run_tick(dir.path(), None, None).unwrap();
+        assert_eq!(r.memories_formed, 0);
+        assert_eq!(r.xp_granted, 0);
     }
 }

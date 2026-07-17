@@ -63,6 +63,10 @@ cargo run -p waga-tui -- tick --persona personas/strict-cto.toml
 cargo run -p waga-tui -- events --last 20
 cargo run -p waga-tui -- stories
 
+# Classified memories + park skill XP
+cargo run -p waga-tui -- memories
+cargo run -p waga-tui -- skills
+
 # Meet the Waga pet (Ratatui). Keys: t/r = tick, q = quit
 cargo run -p waga-tui -- pet
 ```
@@ -81,13 +85,14 @@ cargo run -p waga-tui -- pet
 |-------|------|
 | `waga-core` | Shared types (`WorldSnapshot`, `Event`, `Story`, errors) |
 | **`waga-events`** | Append-only log, links, projection, story rules |
+| **`waga-memory`** | Classified memories + park skill XP |
 | `waga-world` | Sensors + event-backed `run_tick` |
 | `waga-character` | Persona TOML + template notices |
 | `waga-pet` | Mood mapping + ASCII sprites |
-| `waga-tui` | Binary `waga`: `tick` · `events` · `stories` · `pet` |
+| `waga-tui` | Binary `waga`: `tick` · `events` · `stories` · `memories` · `skills` · `pet` |
 
-**Truth:** `events.jsonl` is ground truth. `world.json` is a disposable projection cache.  
-`narrative.jsonl` is legacy (no longer written).
+**Truth:** `events.jsonl` is ground truth. `world.json` / `skills.json` are projection caches.  
+Memories live in `memories.jsonl` (index) + `MemoryFormed` events. XP is park-wide (not per persona).
 
 Stack aligns with Grok Build: Rust, Cargo workspace, clap, ratatui/crossterm, serde, chrono, tracing. Greenfield (**Path A**), not a monorepo fork.
 

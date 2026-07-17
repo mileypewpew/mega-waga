@@ -3,6 +3,8 @@
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 
+use crate::{MemoryClass, MemoryId, XpBeneficiary};
+
 /// Stable event identifier (`evt_<uuid>`).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct EventId(pub String);
@@ -79,6 +81,18 @@ pub enum EventBody {
     StoryClosed {
         story_id: StoryId,
         summary: String,
+    },
+    MemoryFormed {
+        memory_id: MemoryId,
+        class: MemoryClass,
+        title: String,
+    },
+    XpGranted {
+        skill_id: String,
+        amount: u32,
+        beneficiary: XpBeneficiary,
+        memory_id: Option<MemoryId>,
+        reason: String,
     },
 }
 
