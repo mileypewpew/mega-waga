@@ -22,7 +22,10 @@ use waga_memory::{
     list_skills, skills_summary_line,
 };
 use waga_pet::{mood_from_snapshot, sprite, PetMood};
-use waga_world::{format_tick_summary, peek_snapshot, run_tick};
+use waga_voice::{
+    example_voice_toml, load_voice_config, resolve_provider, speak, SpeakIntent, VoiceProvider,
+};
+use waga_world::{format_tick_summary, peek_snapshot, run_tick_with, TickOptions};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -45,12 +48,33 @@ enum Commands {
         persona: Option<PathBuf>,
         #[arg(long)]
         repo: Option<PathBuf>,
+        /// Speak high-signal notify lines (story/XP) via premium TTS.
+        #[arg(long, default_value_t = true)]
+        voice: bool,
+        /// Force silence even if voice.toml is enabled.
+        #[arg(long, default_value_t = false)]
+        no_voice: bool,
     },
     /// One-screen park snapshot (git, story, memory, skills).
     Status {
         #[arg(long, default_value = ".waga")]
         data_dir: PathBuf,
     },
+    /// Speak text with premium TTS (xAI / OpenAI / ElevenLabs).
+    Say {
+        /// Text to speak
+        text: String,
+        #[arg(long, default_value = ".waga")]
+        data_dir: PathBuf,
+        /// Provider override: auto | xai | openai | elevenlabs | null
+        #[arg(long)]
+        provider: Option<String>,
+        /// Write mp3 but do not play
+        #[arg(long, default_value_t = false)]
+        no_play: bool,
+    },
+    /// Print example voice.toml and where to put it.
+    VoiceConfig,
     /// Show the Waga pet (Ratatui). Keys: t tick, r refresh, q quit.
     Pet {
         #[arg(long, default_value = ".waga")]
@@ -61,6 +85,11 @@ enum Commands {
         repo: Option<PathBuf>,
         #[arg(long, default_value_t = 10)]
         every: u64,
+        /// Speak notify lines on tick (default true if keys present).
+        #[arg(long, default_value_t = true)]
+        voice: bool,
+        #[arg(long, default_value_t = false)]
+        no_voice: bool,
     },
     /// List recent events from the append-only log.
     Events {
@@ -103,10 +132,43 @@ fn main() -> Result<()> {
             data_dir,
             persona,
             repo,
+            voice,
+            no_voice,
         } => {
-            let result = run_tick(&data_dir, persona.as_deref(), repo.as_deref())
-                .context("tick failed")?;
+            let voice_on = voice && !no_voice;
+            let result = run_tick_with(
+                &data_dir,
+                persona.as_deref(),
+                repo.as_deref(),
+                TickOptions { voice: voice_on },
+            )
+            .context("tick failed")?;
             println!("{}", format_tick_summary(&result));
+        }
+        Commands::Say {
+            text,
+            data_dir,
+            provider,
+            no_play,
+        } => {
+            let mut cfg = load_voice_config(Some(&data_dir));
+            if no_play {
+                cfg.play = false;
+            }
+            if let Some(p) = provider {
+                cfg.default_provider = parse_provider(&p).context("provider")?;
+            }
+            let path = speak(&cfg, &text, SpeakIntent::Explicit, &data_dir)
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            let resolved = resolve_provider(&cfg, SpeakIntent::Explicit)
+                .map(|p| format!("{p:?}"))
+                .unwrap_or_else(|_| "?".into());
+            println!("spoke via {resolved} → {}", path.display());
+        }
+        Commands::VoiceConfig => {
+            println!("# Write to .waga/voice.toml or ~/.config/waga/voice.toml\n");
+            println!("{}", example_voice_toml());
+            println!("# Env keys: XAI_API_KEY, OPENAI_API_KEY, ELEVENLABS_API_KEY");
         }
         Commands::Status { data_dir } => {
             let snap = peek_snapshot(&data_dir, "strict-cto").context("peek world")?;
@@ -126,8 +188,10 @@ fn main() -> Result<()> {
             persona,
             repo,
             every,
+            voice,
+            no_voice,
         } => {
-            run_pet_ui(data_dir, persona, repo, every)?;
+            run_pet_ui(data_dir, persona, repo, every, voice && !no_voice)?;
         }
         Commands::Events { data_dir, last } => {
             let log = EventLog::open(&data_dir).context("open event log")?;
@@ -189,6 +253,7 @@ struct PetApp {
     story_line: String,
     every: Duration,
     last_auto: Instant,
+    voice: bool,
 }
 
 impl PetApp {
@@ -197,6 +262,7 @@ impl PetApp {
         persona: Option<PathBuf>,
         repo: Option<PathBuf>,
         every_secs: u64,
+        voice: bool,
     ) -> Result<Self> {
         let mut app = Self {
             data_dir,
@@ -212,6 +278,7 @@ impl PetApp {
             story_line: "story: —".into(),
             every: Duration::from_secs(every_secs),
             last_auto: Instant::now(),
+            voice,
         };
         match peek_snapshot(&app.data_dir, "strict-cto") {
             Ok(s) if s.tick > 0 => {
@@ -256,19 +323,34 @@ impl PetApp {
     }
 
     fn do_tick(&mut self) -> Result<()> {
-        let result = run_tick(
+        let result = run_tick_with(
             &self.data_dir,
             self.persona.as_deref(),
             self.repo.as_deref(),
+            TickOptions { voice: self.voice },
         )?;
         self.apply_snapshot(&result.snapshot, result.notice);
         self.status = format!(
-            "ticked → {} · mem+{} xp+{}",
-            result.pet_mood, result.memories_formed, result.xp_granted
+            "ticked → {} · mem+{} xp+{} · voice={}",
+            result.pet_mood,
+            result.memories_formed,
+            result.xp_granted,
+            if self.voice { "on" } else { "off" }
         );
         self.refresh_growth()?;
         self.last_auto = Instant::now();
         Ok(())
+    }
+}
+
+fn parse_provider(s: &str) -> Result<VoiceProvider> {
+    match s.to_ascii_lowercase().as_str() {
+        "auto" => Ok(VoiceProvider::Auto),
+        "xai" | "grok" => Ok(VoiceProvider::Xai),
+        "openai" | "oai" => Ok(VoiceProvider::Openai),
+        "elevenlabs" | "el" | "11" => Ok(VoiceProvider::Elevenlabs),
+        "null" | "off" | "none" => Ok(VoiceProvider::Null),
+        other => anyhow::bail!("unknown provider '{other}' (auto|xai|openai|elevenlabs|null)"),
     }
 }
 
@@ -277,8 +359,9 @@ fn run_pet_ui(
     persona: Option<PathBuf>,
     repo: Option<PathBuf>,
     every: u64,
+    voice: bool,
 ) -> Result<()> {
-    let mut app = PetApp::new(data_dir, persona, repo, every)?;
+    let mut app = PetApp::new(data_dir, persona, repo, every, voice)?;
 
     enable_raw_mode()?;
     let mut out = stdout();

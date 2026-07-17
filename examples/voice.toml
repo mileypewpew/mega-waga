@@ -1,0 +1,27 @@
+# Copy to .waga/voice.toml or ~/.config/waga/voice.toml
+# Env: XAI_API_KEY, OPENAI_API_KEY, ELEVENLABS_API_KEY
+
+enabled = true
+default_provider = "auto"  # auto | xai | openai | elevenlabs | null
+play = true
+
+[auto]
+notify_pet = "elevenlabs"
+notify_fast = "openai"
+notify_default = "xai"
+fallback = ["xai", "openai", "elevenlabs"]
+
+[xai]
+api_key_env = "XAI_API_KEY"
+voice_id = "eve"
+language = "en"
+
+[openai]
+api_key_env = "OPENAI_API_KEY"
+model = "tts-1-hd"
+voice = "nova"
+
+[elevenlabs]
+api_key_env = "ELEVENLABS_API_KEY"
+voice_id = ""   # required for ElevenLabs
+model_id = "eleven_multilingual_v2"

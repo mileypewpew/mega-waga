@@ -15,6 +15,7 @@ use waga_events::{
 };
 use waga_memory::{commit_memory_outcome, process_new_events, recent_memories};
 use waga_pet::{mood_from_snapshot, PetMood};
+use waga_voice::{load_voice_config, notify_lines_from_events, speak_notify_lines};
 
 /// Paths under a data directory (default `.waga`).
 pub struct DataPaths {
@@ -114,11 +115,28 @@ pub fn load_persona(persona_path: Option<&Path>) -> Result<Persona> {
     }
 }
 
+/// Options for a park tick.
+#[derive(Debug, Clone, Default)]
+pub struct TickOptions {
+    /// When true (default), speak high-signal notify lines if voice is configured.
+    pub voice: bool,
+}
+
 /// Full tick: sensors → events → story rules → project → cache world.json.
 pub fn run_tick(
     data_dir: impl AsRef<Path>,
     persona_path: Option<&Path>,
     repo_hint: Option<&Path>,
+) -> Result<TickResult> {
+    run_tick_with(data_dir, persona_path, repo_hint, TickOptions { voice: true })
+}
+
+/// Full tick with options (e.g. silence voice).
+pub fn run_tick_with(
+    data_dir: impl AsRef<Path>,
+    persona_path: Option<&Path>,
+    repo_hint: Option<&Path>,
+    opts: TickOptions,
 ) -> Result<TickResult> {
     let root = data_dir.as_ref();
     let paths = DataPaths::new(root);
@@ -272,6 +290,17 @@ pub fn run_tick(
     log.append(&batch)?;
     story_store.save()?;
     commit_memory_outcome(root, &mem_out)?;
+
+    if opts.voice {
+        let vcfg = load_voice_config(Some(root));
+        // Prefer story/XP lines; skip redundant MemoryFormed if we already have story close
+        let mut lines = notify_lines_from_events(&batch);
+        let has_story = lines.iter().any(|(t, _)| t.contains("Story"));
+        if has_story {
+            lines.retain(|(t, _)| !t.starts_with("Memory."));
+        }
+        speak_notify_lines(&vcfg, root, &lines);
+    }
 
     let mut all = history;
     all.extend(batch);

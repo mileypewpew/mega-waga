@@ -22,4 +22,5 @@ waga-core = { workspace = true }
 waga-events = { workspace = true }
 waga-memory = { workspace = true }
 waga-pet = { workspace = true }
+waga-voice = { workspace = true }
 waga-world = { workspace = true }

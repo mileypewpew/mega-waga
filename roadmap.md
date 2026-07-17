@@ -1,7 +1,7 @@
 # Roadmap — grok-waga
 
-**Status:** Memory + XP v1 **implemented** (classified memories, park skill sheet)  
-**Last updated:** 2026-07-16  
+**Status:** Voice notify v1 **implemented** (xAI + OpenAI + ElevenLabs TTS)  
+**Last updated:** 2026-07-17  
 
 This is a living map, not a contract. We move one phase at a time.
 

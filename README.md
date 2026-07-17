@@ -70,10 +70,24 @@ cargo run -p waga-tui -- skills
 # One-screen park snapshot
 cargo run -p waga-tui -- status
 
+# Premium TTS (xAI / OpenAI / ElevenLabs — whichever keys you set)
+cargo run -p waga-tui -- voice-config    # print example voice.toml
+cargo run -p waga-tui -- say "Hello from the park"
+# Story open/close / XP also speak on tick when voice is enabled (default)
+cargo run -p waga-tui -- tick
+cargo run -p waga-tui -- tick --no-voice
+
 # Meet the Waga pet (Ratatui). Keys: t/r = tick, q = quit
 # Pet shows speech (with memory recall), story, last memory, skills
 cargo run -p waga-tui -- pet
 ```
+
+### Voice setup
+
+1. Export at least one key: `XAI_API_KEY`, `OPENAI_API_KEY`, and/or `ELEVENLABS_API_KEY`  
+2. Optional: `cargo run -p waga-tui -- voice-config > .waga/voice.toml` and edit voices  
+3. For ElevenLabs, set `voice_id` in that file  
+4. Playback needs `ffplay`, `mpv`, or `mpg123` on `PATH`
 
 **First “oh it works” moment**
 
@@ -90,6 +104,7 @@ cargo run -p waga-tui -- pet
 | `waga-core` | Shared types (`WorldSnapshot`, `Event`, `Story`, errors) |
 | **`waga-events`** | Append-only log, links, projection, story rules |
 | **`waga-memory`** | Classified memories + park skill XP |
+| **`waga-voice`** | Premium TTS: xAI · OpenAI · ElevenLabs |
 | `waga-world` | Sensors + event-backed `run_tick` |
 | `waga-character` | Persona TOML + template notices |
 | `waga-pet` | Mood mapping + ASCII sprites |
