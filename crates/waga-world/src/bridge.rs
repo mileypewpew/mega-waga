@@ -86,9 +86,58 @@ impl BridgePaths {
         self.dir().join("inbox.jsonl")
     }
 
+    pub fn outbox_jsonl(&self) -> PathBuf {
+        self.dir().join("outbox.jsonl")
+    }
+
+    /// How many inbox lines we have already spoken (cursor).
+    pub fn inbox_spoken_cursor(&self) -> PathBuf {
+        self.dir().join("inbox_spoken.cursor")
+    }
+
     pub fn ensure(&self) -> Result<()> {
         fs::create_dir_all(self.dir())?;
         Ok(())
+    }
+}
+
+/// One message from human / WAGA → Grok Build.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BridgeOutboxMessage {
+    pub at: DateTime<Local>,
+    #[serde(default = "default_user_source")]
+    pub source: String,
+    /// `chat` | `note` | free-form
+    pub kind: String,
+    pub text: String,
+    #[serde(default)]
+    pub session: Option<String>,
+}
+
+fn default_user_source() -> String {
+    "user".into()
+}
+
+/// Unified thread row for display.
+#[derive(Debug, Clone)]
+pub struct BridgeThreadLine {
+    pub at: DateTime<Local>,
+    pub direction: &'static str, // "→" outbox (to Build) | "←" inbox (from Build)
+    pub kind: String,
+    pub source: String,
+    pub text: String,
+}
+
+impl BridgeThreadLine {
+    pub fn format(&self) -> String {
+        format!(
+            "{} {} [{}] {} — {}",
+            self.at.format("%Y-%m-%d %H:%M:%S"),
+            self.direction,
+            self.kind,
+            self.source,
+            self.text
+        )
     }
 }
 
@@ -239,13 +288,14 @@ fn render_world_md(w: &BridgeWorld) -> String {
             out.push_str(&format!("- {n}\n"));
         }
     }
-    out.push_str("\n## How Grok Build talks back\n\n");
-    out.push_str("Append a JSON line to `bridge/inbox.jsonl`:\n\n");
+    out.push_str("\n## Conversation\n\n");
+    out.push_str("- **You → Build:** `bridge/outbox.jsonl` (or `waga talk`)\n");
+    out.push_str("- **Build → you:** `bridge/inbox.jsonl` (`status` · `blocked` · `reply` · `note`)\n\n");
+    out.push_str("### Inbox line example\n\n");
     out.push_str("```json\n");
     out.push_str(r#"{"at":"2026-07-19T15:00:00+02:00","source":"grok-build","kind":"blocked","text":"cargo test failed","session":"optional"}"#);
     out.push('\n');
-    out.push_str("```\n\n");
-    out.push_str("Kinds: `status` · `blocked` · `note`. Then run `waga bridge inbox` or wait for daemon.\n");
+    out.push_str("```\n");
     out
 }
 
@@ -327,9 +377,190 @@ pub fn format_inbox_line(m: &BridgeInboxMessage) -> String {
     )
 }
 
-/// Count unread-ish: messages after `since` tick time is hard; use count of last file.
+/// Count inbox messages.
 pub fn inbox_len(data_dir: &Path) -> usize {
     load_inbox(data_dir).map(|v| v.len()).unwrap_or(0)
+}
+
+/// Append a human/WAGA → Build message.
+pub fn append_outbox(data_dir: &Path, msg: &BridgeOutboxMessage) -> Result<()> {
+    let paths = BridgePaths::new(data_dir);
+    paths.ensure()?;
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(paths.outbox_jsonl())?;
+    writeln!(file, "{}", serde_json::to_string(msg)?)?;
+    file.flush()?;
+    Ok(())
+}
+
+/// Post chat/note to outbox with timestamp; refreshes world export.
+pub fn post_outbox(
+    data_dir: &Path,
+    kind: impl Into<String>,
+    text: impl Into<String>,
+    source: impl Into<String>,
+    session: Option<String>,
+) -> Result<BridgeOutboxMessage> {
+    let text = text.into();
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Err(waga_core::WagaError::Msg("empty outbox text".into()));
+    }
+    // Keep park blurb current for Build.
+    let _ = export_bridge(data_dir);
+    let msg = BridgeOutboxMessage {
+        at: Local::now(),
+        source: source.into(),
+        kind: kind.into(),
+        text,
+        session,
+    };
+    append_outbox(data_dir, &msg)?;
+    Ok(msg)
+}
+
+/// Load all outbox messages.
+pub fn load_outbox(data_dir: &Path) -> Result<Vec<BridgeOutboxMessage>> {
+    let path = BridgePaths::new(data_dir).outbox_jsonl();
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let file = fs::File::open(path)?;
+    let mut out = Vec::new();
+    for line in BufReader::new(file).lines() {
+        let line = line?;
+        let t = line.trim();
+        if t.is_empty() {
+            continue;
+        }
+        match serde_json::from_str::<BridgeOutboxMessage>(t) {
+            Ok(m) => out.push(m),
+            Err(e) => tracing::warn!("skip corrupt outbox line: {e}"),
+        }
+    }
+    Ok(out)
+}
+
+pub fn load_outbox_last(data_dir: &Path, n: usize) -> Result<Vec<BridgeOutboxMessage>> {
+    let all = load_outbox(data_dir)?;
+    let start = all.len().saturating_sub(n);
+    Ok(all[start..].to_vec())
+}
+
+pub fn format_outbox_line(m: &BridgeOutboxMessage) -> String {
+    let session = m
+        .session
+        .as_deref()
+        .map(|s| format!(" session={s}"))
+        .unwrap_or_default();
+    format!(
+        "{} [{}] {} — {}{}",
+        m.at.format("%Y-%m-%d %H:%M:%S"),
+        m.kind,
+        m.source,
+        m.text,
+        session
+    )
+}
+
+/// Text ready for clipboard paste into Grok Build input (after review).
+pub fn clipboard_payload_for_outbox(msg: &BridgeOutboxMessage) -> String {
+    format!(
+        "[WAGA → Grok Build]\nPark context: .waga/bridge/world.md\n\n{}\n",
+        msg.text
+    )
+}
+
+/// Merge inbox + outbox sorted by time (last `n` lines).
+pub fn load_thread_last(data_dir: &Path, n: usize) -> Result<Vec<BridgeThreadLine>> {
+    let mut lines = Vec::new();
+    for m in load_outbox(data_dir)? {
+        lines.push(BridgeThreadLine {
+            at: m.at,
+            direction: "→",
+            kind: m.kind,
+            source: m.source,
+            text: m.text,
+        });
+    }
+    for m in load_inbox(data_dir)? {
+        lines.push(BridgeThreadLine {
+            at: m.at,
+            direction: "←",
+            kind: m.kind,
+            source: m.source,
+            text: m.text,
+        });
+    }
+    lines.sort_by(|a, b| a.at.cmp(&b.at));
+    let start = lines.len().saturating_sub(n);
+    Ok(lines[start..].to_vec())
+}
+
+/// Whether this inbox kind should be spoken (Slice 4).
+pub fn inbox_kind_is_speakable(kind: &str) -> bool {
+    matches!(
+        kind.to_ascii_lowercase().as_str(),
+        "blocked" | "reply" | "done"
+    )
+}
+
+/// Spoken line for an inbox message, if any.
+pub fn speak_text_for_inbox(m: &BridgeInboxMessage) -> Option<String> {
+    if !inbox_kind_is_speakable(&m.kind) {
+        return None;
+    }
+    let t = m.text.trim();
+    if t.is_empty() {
+        return None;
+    }
+    let kind = m.kind.to_ascii_lowercase();
+    Some(match kind.as_str() {
+        "blocked" => format!("Build blocked. {t}"),
+        "reply" => format!("Build says. {t}"),
+        "done" => format!("Build done. {t}"),
+        _ => t.to_string(),
+    })
+}
+
+fn read_spoken_cursor(data_dir: &Path) -> usize {
+    let path = BridgePaths::new(data_dir).inbox_spoken_cursor();
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0)
+}
+
+fn write_spoken_cursor(data_dir: &Path, n: usize) -> Result<()> {
+    let paths = BridgePaths::new(data_dir);
+    paths.ensure()?;
+    fs::write(paths.inbox_spoken_cursor(), format!("{n}"))?;
+    Ok(())
+}
+
+/// Collect speakable lines from inbox messages not yet spoken; advance cursor.
+/// Returns TTS strings. Call even with voice off to advance cursor if `advance` is true.
+pub fn drain_speakable_inbox(data_dir: &Path, advance: bool) -> Result<Vec<String>> {
+    let all = load_inbox(data_dir)?;
+    let cursor = read_spoken_cursor(data_dir).min(all.len());
+    let mut lines = Vec::new();
+    for m in &all[cursor..] {
+        if let Some(s) = speak_text_for_inbox(m) {
+            lines.push(s);
+        }
+    }
+    if advance {
+        write_spoken_cursor(data_dir, all.len())?;
+    }
+    Ok(lines)
+}
+
+/// Mark all current inbox as already spoken (e.g. before first daemon start).
+pub fn mark_inbox_spoken_up_to_date(data_dir: &Path) -> Result<()> {
+    let n = load_inbox(data_dir)?.len();
+    write_spoken_cursor(data_dir, n)
 }
 
 #[cfg(test)]
@@ -365,5 +596,53 @@ mod tests {
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].kind, "blocked");
         assert_eq!(loaded[0].text, "tests failed");
+    }
+
+    #[test]
+    fn outbox_and_thread() {
+        let dir = tempfile::tempdir().unwrap();
+        run_tick(dir.path(), None, None).unwrap();
+        post_outbox(dir.path(), "chat", "please fix the test", "user", None).unwrap();
+        post_inbox(
+            dir.path(),
+            "reply",
+            "looking at waga-world",
+            "grok-build",
+            None,
+        )
+        .unwrap();
+        let out = load_outbox(dir.path()).unwrap();
+        assert_eq!(out.len(), 1);
+        let thread = load_thread_last(dir.path(), 10).unwrap();
+        assert_eq!(thread.len(), 2);
+        assert!(thread.iter().any(|l| l.direction == "→"));
+        assert!(thread.iter().any(|l| l.direction == "←"));
+    }
+
+    #[test]
+    fn speakable_blocked_and_cursor() {
+        let dir = tempfile::tempdir().unwrap();
+        post_inbox(dir.path(), "note", "silent", "grok-build", None).unwrap();
+        post_inbox(dir.path(), "blocked", "tests failed", "grok-build", None).unwrap();
+        let lines = drain_speakable_inbox(dir.path(), true).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].contains("Build blocked"));
+        // Second drain empty
+        let again = drain_speakable_inbox(dir.path(), true).unwrap();
+        assert!(again.is_empty());
+    }
+
+    #[test]
+    fn clipboard_payload_contains_text() {
+        let m = BridgeOutboxMessage {
+            at: Local::now(),
+            source: "user".into(),
+            kind: "chat".into(),
+            text: "hello build".into(),
+            session: None,
+        };
+        let p = clipboard_payload_for_outbox(&m);
+        assert!(p.contains("hello build"));
+        assert!(p.contains("world.md"));
     }
 }

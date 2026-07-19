@@ -10,6 +10,7 @@ Until live A2A exists, the two agents share a **folder**:
 | Direction | Path | Who writes |
 |-----------|------|------------|
 | Park → Build | `.waga/bridge/world.md` (+ `world.json`) | WAGA (`tick`, `daemon`, `bridge export`) |
+| You → Build | `.waga/bridge/outbox.jsonl` | You via `waga talk` / `bridge say` |
 | Build → Park | `.waga/bridge/inbox.jsonl` | Grok Build (or `waga bridge post`) |
 
 ## For Grok Build (this machine)
@@ -45,24 +46,39 @@ cargo run -p waga-tui -- daemon --every 60 --quiet --no-voice
 
 Daemon refreshes `world.md` after every tick.
 
-## For humans
+## For humans (conversation)
 
 ```text
-waga bridge export    # force-write world.md / world.json
-waga bridge status    # blurb + last inbox lines
-waga bridge inbox     # list Build → park messages
-waga bridge post "…"  # simulate Build
+# Type → review → outbox + clipboard (paste into Build)
+waga talk
+waga talk "please run the park tests" --yes
+waga bridge say "shorter alias with --yes semantics"
+
+waga bridge outbox          # what you sent
+waga bridge inbox           # what Build sent
+waga bridge thread          # merged timeline
+waga bridge export / status
+
+# Simulate Build (also speaks blocked/reply/done if voice keys set)
+waga bridge post "cargo test failed" --kind blocked
+waga bridge post "fixed the flaky test" --kind reply
 ```
+
+**Review flow:** draft is shown; `Y` send, `n` cancel, `e` edit then confirm.  
+Clipboard payload includes a short header + your text so you can paste into Grok Build’s input.
+
+**Speak on blocked/reply:** kinds `blocked`, `reply`, `done` trigger TTS (if keys + player). Daemon also speaks *new* speakable inbox lines each tick.
 
 ## Non-goals v0
 
 - MCP server  
 - Realtime A2A  
 - Auto-inject into Grok Build context without reading the file  
-- Mutating Build from park (Build pulls; park does not push network)
+- Mutating Build from park (Build pulls; park does not push network)  
+- Push-to-talk / Voxtype (fills the same draft later)
 
 ## Next
 
-- Optional: WAGA speaks inbox `blocked` via TTS notify  
+- PTT / local STT adapter → same review box  
 - Optional: MCP tool `waga_world` wrapping the same files  
 - Later: true A2A

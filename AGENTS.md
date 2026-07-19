@@ -105,9 +105,15 @@ cargo run -p waga-tui -- daemon --every 30 --no-voice
 cargo run -p waga-tui -- daemon-status
 cargo run -p waga-tui -- notifies
 cargo run -p waga-tui -- bridge status
+cargo run -p waga-tui -- talk "message for Build" --yes
+cargo run -p waga-tui -- bridge thread
 ```
 
-**Grok Build bridge (file v0):** read `.waga/bridge/world.md` for park context; post back with `waga bridge post "…" --kind blocked|status|note`. Details: [docs/handoffs/2026-07-19-grok-build-bridge.md](./docs/handoffs/2026-07-19-grok-build-bridge.md).
+**Grok Build bridge (file v0):**  
+- Park context: `.waga/bridge/world.md`  
+- You → Build: `waga talk` → `outbox.jsonl` + clipboard  
+- Build → park: `bridge post` / `inbox.jsonl` (`blocked`/`reply`/`done` can TTS)  
+Details: [docs/handoffs/2026-07-19-grok-build-bridge.md](./docs/handoffs/2026-07-19-grok-build-bridge.md).
 
 Event log spine: `events.jsonl` is canonical.  
 Memory + park XP: `docs/superpowers/specs/2026-07-16-memory-xp-design.md`.

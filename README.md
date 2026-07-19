@@ -97,11 +97,13 @@ cargo run -p waga-tui -- notifies --last 10
 # cooperative stop (or Ctrl+C in the daemon terminal)
 cargo run -p waga-tui -- daemon-stop
 
-# Grok Build file bridge (world blurb out, inbox in)
+# Grok Build bridge (conversation + world blurb)
+cargo run -p waga-tui -- talk                    # type → review → outbox + clipboard
+cargo run -p waga-tui -- talk "fix tests" --yes
+cargo run -p waga-tui -- bridge thread
+cargo run -p waga-tui -- bridge outbox
+cargo run -p waga-tui -- bridge post "tests failed" --kind blocked   # Build → park (+ TTS)
 cargo run -p waga-tui -- bridge export
-cargo run -p waga-tui -- bridge status
-cargo run -p waga-tui -- bridge post "cargo test failed" --kind blocked
-cargo run -p waga-tui -- bridge inbox
 ```
 
 See [Grok Build bridge handoff](./docs/handoffs/2026-07-19-grok-build-bridge.md).

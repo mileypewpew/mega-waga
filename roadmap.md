@@ -1,6 +1,6 @@
 # Roadmap — grok-waga
 
-**Status:** Grok Build file bridge v0 **implemented**; always-on daemon v0 earlier  
+**Status:** Talk + outbox + speak-on-blocked **implemented**; bridge/daemon earlier  
 **Last updated:** 2026-07-19  
 
 This is a living map, not a contract. We move one phase at a time.

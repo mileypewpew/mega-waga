@@ -12,7 +12,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::{Frame, Terminal};
-use std::io::stdout;
+use std::io::{self, stdout, BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -34,9 +34,11 @@ use waga_voice::{
     example_voice_toml, load_voice_config, resolve_provider, speak, SpeakIntent, VoiceProvider,
 };
 use waga_world::{
-    export_bridge, format_daemon_status, format_inbox_line, format_tick_summary,
-    is_interesting_tick, load_inbox_last, notify_entries_for_tick, peek_snapshot, post_inbox,
-    run_tick_with, update_watch, DaemonStatus, DaemonWatch, NotifyBus, TickOptions,
+    clipboard_payload_for_outbox, drain_speakable_inbox, export_bridge, format_daemon_status,
+    format_inbox_line, format_outbox_line, format_tick_summary, is_interesting_tick,
+    load_inbox_last, load_outbox_last, load_thread_last, mark_inbox_spoken_up_to_date,
+    notify_entries_for_tick, peek_snapshot, post_inbox, post_outbox, run_tick_with,
+    speak_text_for_inbox, update_watch, DaemonStatus, DaemonWatch, NotifyBus, TickOptions,
 };
 
 #[derive(Parser, Debug)]
@@ -174,10 +176,25 @@ enum Commands {
         #[arg(long, default_value_t = 20)]
         last: usize,
     },
-    /// Grok Build file bridge (world export + inbox).
+    /// Grok Build file bridge (world export + inbox/outbox).
     Bridge {
         #[command(subcommand)]
         action: BridgeAction,
+    },
+    /// Talk to Grok Build: type → review → outbox + clipboard (Slice 1–2).
+    Talk {
+        /// Optional message (if omitted, interactive prompt).
+        text: Option<String>,
+        #[arg(long, default_value = ".waga")]
+        data_dir: PathBuf,
+        /// Skip review prompt (send immediately).
+        #[arg(long, default_value_t = false)]
+        yes: bool,
+        /// Do not copy to clipboard.
+        #[arg(long, default_value_t = false)]
+        no_clipboard: bool,
+        #[arg(long)]
+        session: Option<String>,
     },
 }
 
@@ -188,7 +205,7 @@ enum BridgeAction {
         #[arg(long, default_value = ".waga")]
         data_dir: PathBuf,
     },
-    /// Show export paths + short blurb + recent inbox.
+    /// Show export paths + short blurb + recent inbox/outbox.
     Status {
         #[arg(long, default_value = ".waga")]
         data_dir: PathBuf,
@@ -199,11 +216,31 @@ enum BridgeAction {
         data_dir: PathBuf,
         #[arg(long, default_value_t = 20)]
         last: usize,
+        /// Speak new blocked/reply lines (uses voice keys if set).
+        #[arg(long, default_value_t = false)]
+        speak: bool,
+        #[arg(long, default_value_t = false)]
+        no_voice: bool,
+    },
+    /// List messages you sent to Build (outbox).
+    Outbox {
+        #[arg(long, default_value = ".waga")]
+        data_dir: PathBuf,
+        #[arg(long, default_value_t = 20)]
+        last: usize,
+    },
+    /// Merged conversation thread (outbox → + inbox ←).
+    Thread {
+        #[arg(long, default_value = ".waga")]
+        data_dir: PathBuf,
+        #[arg(long, default_value_t = 30)]
+        last: usize,
     },
     /// Post a message into the park inbox (simulates Grok Build).
     Post {
         /// Message body
         text: String,
+        /// status | blocked | reply | note | done
         #[arg(long, default_value = "note")]
         kind: String,
         #[arg(long, default_value = "grok-build")]
@@ -212,6 +249,21 @@ enum BridgeAction {
         session: Option<String>,
         #[arg(long, default_value = ".waga")]
         data_dir: PathBuf,
+        /// Speak if kind is blocked/reply/done (default true).
+        #[arg(long, default_value_t = true)]
+        voice: bool,
+        #[arg(long, default_value_t = false)]
+        no_voice: bool,
+    },
+    /// Alias: send chat to outbox + clipboard (same as `waga talk --yes`).
+    Say {
+        text: String,
+        #[arg(long, default_value = ".waga")]
+        data_dir: PathBuf,
+        #[arg(long, default_value_t = false)]
+        no_clipboard: bool,
+        #[arg(long)]
+        session: Option<String>,
     },
 }
 
@@ -521,23 +573,51 @@ fn main() -> Result<()> {
                 println!();
                 println!("{}", w.blurb);
                 println!();
-                let inbox = load_inbox_last(&data_dir, 5).context("inbox")?;
-                if inbox.is_empty() {
-                    println!("inbox: (empty — Build can append bridge/inbox.jsonl)");
+                let thread = load_thread_last(&data_dir, 8).context("thread")?;
+                if thread.is_empty() {
+                    println!("thread: (empty — `waga talk` / `bridge post`)");
                 } else {
-                    println!("inbox (last {}):", inbox.len());
-                    for m in inbox {
-                        println!("  {}", format_inbox_line(&m));
+                    println!("thread (recent):");
+                    for line in thread {
+                        println!("  {}", line.format());
                     }
                 }
             }
-            BridgeAction::Inbox { data_dir, last } => {
+            BridgeAction::Inbox {
+                data_dir,
+                last,
+                speak,
+                no_voice,
+            } => {
                 let inbox = load_inbox_last(&data_dir, last).context("inbox")?;
                 if inbox.is_empty() {
                     println!("(inbox empty — use `waga bridge post` or append inbox.jsonl)");
                 } else {
                     for m in inbox {
                         println!("{}", format_inbox_line(&m));
+                    }
+                }
+                if speak && !no_voice {
+                    speak_new_inbox(&data_dir, true)?;
+                }
+            }
+            BridgeAction::Outbox { data_dir, last } => {
+                let outbox = load_outbox_last(&data_dir, last).context("outbox")?;
+                if outbox.is_empty() {
+                    println!("(outbox empty — use `waga talk`)");
+                } else {
+                    for m in outbox {
+                        println!("{}", format_outbox_line(&m));
+                    }
+                }
+            }
+            BridgeAction::Thread { data_dir, last } => {
+                let thread = load_thread_last(&data_dir, last).context("thread")?;
+                if thread.is_empty() {
+                    println!("(no conversation yet)");
+                } else {
+                    for line in thread {
+                        println!("{}", line.format());
                     }
                 }
             }
@@ -547,14 +627,164 @@ fn main() -> Result<()> {
                 source,
                 session,
                 data_dir,
+                voice,
+                no_voice,
             } => {
                 let msg = post_inbox(&data_dir, kind, text, source, session)
                     .context("append inbox")?;
-                // Refresh export so Build status is visible in world.md
                 let _ = export_bridge(&data_dir);
                 println!("posted: {}", format_inbox_line(&msg));
+                if voice && !no_voice {
+                    if let Some(line) = speak_text_for_inbox(&msg) {
+                        let cfg = load_voice_config(Some(&data_dir));
+                        waga_voice::speak_notify_lines(
+                            &cfg,
+                            &data_dir,
+                            &[(line, SpeakIntent::Default)],
+                        );
+                    }
+                }
+                // Cursor catches up so daemon won't re-speak this line.
+                let _ = mark_inbox_spoken_up_to_date(&data_dir);
+            }
+            BridgeAction::Say {
+                text,
+                data_dir,
+                no_clipboard,
+                session,
+            } => {
+                send_talk(&data_dir, &text, session, !no_clipboard, true)?;
             }
         },
+        Commands::Talk {
+            text,
+            data_dir,
+            yes,
+            no_clipboard,
+            session,
+        } => {
+            run_talk(data_dir, text, yes, !no_clipboard, session)?;
+        }
+    }
+    Ok(())
+}
+
+fn copy_to_clipboard(text: &str) -> Result<()> {
+    let mut cb = arboard::Clipboard::new().context("open clipboard")?;
+    cb.set_text(text.to_string())
+        .context("set clipboard text")?;
+    Ok(())
+}
+
+/// Speak newly arrived blocked/reply/done inbox lines (Slice 4).
+fn speak_new_inbox(data_dir: &Path, voice_on: bool) -> Result<()> {
+    let lines = drain_speakable_inbox(data_dir, true).context("drain speakable inbox")?;
+    if lines.is_empty() {
+        return Ok(());
+    }
+    if !voice_on {
+        return Ok(());
+    }
+    let cfg = load_voice_config(Some(data_dir));
+    let pairs: Vec<_> = lines
+        .into_iter()
+        .map(|t| (t, SpeakIntent::Default))
+        .collect();
+    waga_voice::speak_notify_lines(&cfg, data_dir, &pairs);
+    Ok(())
+}
+
+fn send_talk(
+    data_dir: &Path,
+    text: &str,
+    session: Option<String>,
+    clipboard: bool,
+    confirmed: bool,
+) -> Result<()> {
+    if !confirmed {
+        return Ok(());
+    }
+    let msg = post_outbox(data_dir, "chat", text, "user", session).context("outbox")?;
+    let payload = clipboard_payload_for_outbox(&msg);
+    if clipboard {
+        match copy_to_clipboard(&payload) {
+            Ok(()) => println!("clipboard: ready to paste into Grok Build"),
+            Err(e) => eprintln!("clipboard failed: {e} (message still in outbox)"),
+        }
+    }
+    println!("sent → Build: {}", format_outbox_line(&msg));
+    println!("  outbox: {}", data_dir.join("bridge/outbox.jsonl").display());
+    println!("  context: {}", data_dir.join("bridge/world.md").display());
+    Ok(())
+}
+
+fn run_talk(
+    data_dir: PathBuf,
+    text: Option<String>,
+    yes: bool,
+    clipboard: bool,
+    session: Option<String>,
+) -> Result<()> {
+    // Fresh blurb for the human while drafting
+    if let Ok(w) = export_bridge(&data_dir) {
+        println!("— park blurb —\n{}\n—", w.blurb);
+    }
+
+    let draft = if let Some(t) = text {
+        t
+    } else {
+        print!("talk> ");
+        io::stdout().flush()?;
+        let mut line = String::new();
+        io::stdin().lock().read_line(&mut line)?;
+        line
+    };
+    let draft = draft.trim().to_string();
+    if draft.is_empty() {
+        anyhow::bail!("empty message — cancelled");
+    }
+
+    println!("\n— review draft —\n{draft}\n—");
+
+    let confirmed = if yes {
+        true
+    } else {
+        print!("Send to Grok Build outbox (+ clipboard)? [Y/n/e] ");
+        io::stdout().flush()?;
+        let mut ans = String::new();
+        io::stdin().lock().read_line(&mut ans)?;
+        let a = ans.trim().to_ascii_lowercase();
+        if a.is_empty() || a == "y" || a == "yes" {
+            true
+        } else if a == "e" || a == "edit" {
+            print!("edit> ");
+            io::stdout().flush()?;
+            let mut line = String::new();
+            io::stdin().lock().read_line(&mut line)?;
+            let edited = line.trim().to_string();
+            if edited.is_empty() {
+                anyhow::bail!("empty edit — cancelled");
+            }
+            println!("\n— revised —\n{edited}\n—");
+            print!("Send? [Y/n] ");
+            io::stdout().flush()?;
+            let mut ans2 = String::new();
+            io::stdin().lock().read_line(&mut ans2)?;
+            let a2 = ans2.trim().to_ascii_lowercase();
+            if a2.is_empty() || a2 == "y" || a2 == "yes" {
+                send_talk(&data_dir, &edited, session, clipboard, true)?;
+                return Ok(());
+            }
+            false
+        } else {
+            false
+        }
+    };
+
+    if confirmed {
+        send_talk(&data_dir, &draft, session, clipboard, true)?;
+    } else {
+        println!("cancelled — nothing sent");
     }
     Ok(())
 }
@@ -611,6 +841,9 @@ fn run_daemon(
     );
     println!("Ctrl+C or `waga daemon-stop` to exit.\n");
 
+    // Don't re-speak historic inbox on first start; only new lines after this.
+    let _ = mark_inbox_spoken_up_to_date(&data_dir);
+
     let mut first = true;
     while running.load(Ordering::SeqCst) {
         // Cooperative stop via `waga daemon-stop` (do not clobber with later saves)
@@ -647,6 +880,10 @@ fn run_daemon(
                     // Keep Grok Build bridge files fresh (world blurb).
                     if let Err(e) = export_bridge(&data_dir) {
                         tracing::warn!("bridge export: {e}");
+                    }
+                    // Speak new Build blocked/reply/done (Slice 4).
+                    if let Err(e) = speak_new_inbox(&data_dir, voice) {
+                        tracing::warn!("inbox voice: {e}");
                     }
                     // If stop was requested during the tick, keep running=false on disk.
                     if stop_requested(&data_dir, status.pid) {
