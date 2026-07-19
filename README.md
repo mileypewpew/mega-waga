@@ -87,6 +87,15 @@ cargo run -p waga-tui -- music bed stop
 
 # Meet the Waga pet (Ratatui). Keys: t tick · space media · n/p track · q quit
 cargo run -p waga-tui -- pet
+
+# Always-on daemon (background ticks + notify bus)
+cargo run -p waga-tui -- daemon --every 30 --no-voice
+# quieter console (only high-signal ticks printed)
+cargo run -p waga-tui -- daemon --every 30 --quiet --no-voice
+cargo run -p waga-tui -- daemon-status
+cargo run -p waga-tui -- notifies --last 10
+# cooperative stop (or Ctrl+C in the daemon terminal)
+cargo run -p waga-tui -- daemon-stop
 ```
 
 ### HumanMusic (SuperCollider)
@@ -125,10 +134,11 @@ cargo run -p waga-tui -- pet
 | `waga-world` | Sensors + event-backed `run_tick` |
 | `waga-character` | Persona TOML + template notices |
 | `waga-pet` | Mood mapping + ASCII sprites |
-| `waga-tui` | Binary `waga`: `tick` · `status` · `events` · `stories` · `memories` · `skills` · `pet` |
+| `waga-tui` | Binary `waga`: `tick` · `status` · `events` · `stories` · `memories` · `skills` · `pet` · `daemon` |
 
 **Truth:** `events.jsonl` is ground truth. `world.json` / `skills.json` are projection caches.  
-Memories live in `memories.jsonl` (index) + `MemoryFormed` events. XP is park-wide (not per persona).
+Memories live in `memories.jsonl` (index) + `MemoryFormed` events. XP is park-wide (not per persona).  
+**Always-on:** `waga daemon` ticks on an interval; status in `daemon.json`; high-signal lines append to `notify.jsonl` (file bus for future bridges).
 
 Stack aligns with Grok Build: Rust, Cargo workspace, clap, ratatui/crossterm, serde, chrono, tracing. Greenfield (**Path A**), not a monorepo fork.
 

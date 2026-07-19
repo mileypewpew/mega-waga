@@ -101,6 +101,9 @@ cargo run -p waga-tui -- stories
 cargo run -p waga-tui -- memories
 cargo run -p waga-tui -- skills
 cargo run -p waga-tui -- pet
+cargo run -p waga-tui -- daemon --every 30 --no-voice
+cargo run -p waga-tui -- daemon-status
+cargo run -p waga-tui -- notifies
 ```
 
 Event log spine: `events.jsonl` is canonical.  

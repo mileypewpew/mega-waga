@@ -1,5 +1,9 @@
 //! World Engine: sensors + event-backed tick (event log is ground truth).
 
+mod daemon;
+
+pub use daemon::*;
+
 use chrono::Local;
 use std::fs;
 use std::path::{Path, PathBuf};

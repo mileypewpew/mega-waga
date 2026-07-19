@@ -152,7 +152,7 @@ c1f5ca3 feat: classified memories + park XP
 
 - **Windows:** `playerctl` / MPRIS is Linux-centric — media control may need a Windows backend later (not blocking core park).  
 - **SuperCollider / playerctl** optional; park core works without them.  
-- **No always-on daemon** yet (pet `--every` is light loop only).  
+- **Always-on daemon v0:** `waga daemon` (interval ticks, `daemon.json`, `notify.jsonl`); not a Windows service yet.  
 - **No Home Assistant / messaging / A2A bridge** yet (designed direction only).  
 - **No Grok Build integration** yet (world digest / “agent blocked” notify).  
 - Clean-only ticks do **not** grant XP — need dirty→clean story arc.  
@@ -163,7 +163,7 @@ c1f5ca3 feat: classified memories + park XP
 ## 8. Suggested next work (priority)
 
 1. **Local verify** — `cargo test`, dirty/clean demo, optional voice keys  
-2. **Always-on daemon** — background tick + notify bus  
+2. ~~**Always-on daemon**~~ — v0 shipped (`waga daemon` + notify bus)  
 3. **`MusicBackend` trait** — SC primary, Lyria RealTime adapter later  
 4. **Windows media** if needed (or skip until Linux always-on)  
 5. **Notify channels** — HA / Telegram sharing same decisions as voice  

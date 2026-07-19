@@ -1,7 +1,7 @@
 # Roadmap — grok-waga
 
-**Status:** Voice notify v1 **implemented** (xAI + OpenAI + ElevenLabs TTS)  
-**Last updated:** 2026-07-17  
+**Status:** Always-on daemon v0 **implemented** (interval ticks + notify bus); voice notify v1 earlier  
+**Last updated:** 2026-07-19  
 
 This is a living map, not a contract. We move one phase at a time.
 
@@ -148,11 +148,12 @@ Deliverables:
 
 **Goal:** Feels like a living desk companion, not a one-shot CLI.
 
-- [ ] Background refresh loop (StateSync)  
+- [x] Background refresh loop v0 — `waga daemon` (interval ticks, `daemon.json`, `notify.jsonl`)  
 - [ ] Ratatui views: World · Memory · Character · Chat  
 - [ ] Graceful pause of sensors; clear privacy indicators  
+- [ ] Windows service / tray (later); Linux systemd unit (later)  
 
-**Exit criteria:** Leave it running; come back; world is current; persona still active.
+**Exit criteria (v0):** Leave `waga daemon` running; come back; world ticks advanced; high-signal events on notify bus.
 
 ---
 

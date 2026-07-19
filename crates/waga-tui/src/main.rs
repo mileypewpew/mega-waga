@@ -1,4 +1,4 @@
-//! WAGA CLI: tick, events, stories, memories, skills, status, pet.
+//! WAGA CLI: tick, events, stories, memories, skills, status, pet, daemon.
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -13,7 +13,10 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::{Frame, Terminal};
 use std::io::stdout;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread;
 use std::time::{Duration, Instant};
 use waga_core::StoryStatus;
 use waga_events::{format_event_line, format_story_line, EventLog, StoryStore};
@@ -30,7 +33,10 @@ use waga_music::{
 use waga_voice::{
     example_voice_toml, load_voice_config, resolve_provider, speak, SpeakIntent, VoiceProvider,
 };
-use waga_world::{format_tick_summary, peek_snapshot, run_tick_with, TickOptions};
+use waga_world::{
+    format_daemon_status, format_tick_summary, is_interesting_tick, notify_entries_for_tick,
+    peek_snapshot, run_tick_with, update_watch, DaemonStatus, DaemonWatch, NotifyBus, TickOptions,
+};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -126,6 +132,46 @@ enum Commands {
     Music {
         #[command(subcommand)]
         action: MusicAction,
+    },
+    /// Always-on park daemon: tick on an interval, notify bus + status file.
+    Daemon {
+        /// Seconds between ticks.
+        #[arg(long, default_value_t = 30)]
+        every: u64,
+        #[arg(long, default_value = ".waga")]
+        data_dir: PathBuf,
+        #[arg(long)]
+        persona: Option<PathBuf>,
+        #[arg(long)]
+        repo: Option<PathBuf>,
+        /// Speak high-signal notify lines (default on).
+        #[arg(long, default_value_t = true)]
+        voice: bool,
+        #[arg(long, default_value_t = false)]
+        no_voice: bool,
+        /// Only print high-signal ticks (quiet heartbeats).
+        #[arg(long, default_value_t = false)]
+        quiet: bool,
+        /// Wait `every` before the first tick (default ticks immediately).
+        #[arg(long, default_value_t = false)]
+        no_immediate: bool,
+    },
+    /// Print always-on daemon status (`.waga/daemon.json`).
+    DaemonStatus {
+        #[arg(long, default_value = ".waga")]
+        data_dir: PathBuf,
+    },
+    /// Cooperative stop request (sets running=false; loop also exits on Ctrl+C).
+    DaemonStop {
+        #[arg(long, default_value = ".waga")]
+        data_dir: PathBuf,
+    },
+    /// Tail the file-backed notify bus (`.waga/notify.jsonl`).
+    Notifies {
+        #[arg(long, default_value = ".waga")]
+        data_dir: PathBuf,
+        #[arg(long, default_value_t = 20)]
+        last: usize,
     },
 }
 
@@ -357,8 +403,211 @@ fn main() -> Result<()> {
                 }
             },
         },
+        Commands::Daemon {
+            every,
+            data_dir,
+            persona,
+            repo,
+            voice,
+            no_voice,
+            quiet,
+            no_immediate,
+        } => {
+            run_daemon(
+                data_dir,
+                persona,
+                repo,
+                every,
+                voice && !no_voice,
+                quiet,
+                !no_immediate,
+            )?;
+        }
+        Commands::DaemonStatus { data_dir } => {
+            match DaemonStatus::load(&data_dir).context("load daemon status")? {
+                Some(s) => println!("{}", format_daemon_status(&s)),
+                None => println!(
+                    "(no daemon status — run `waga daemon` first; expected {})",
+                    data_dir.join("daemon.json").display()
+                ),
+            }
+        }
+        Commands::DaemonStop { data_dir } => {
+            match DaemonStatus::load(&data_dir).context("load daemon status")? {
+                Some(mut s) if s.running => {
+                    s.mark_stopped(&data_dir)?;
+                    println!(
+                        "stop requested for pid={} (daemon exits within one interval)",
+                        s.pid
+                    );
+                }
+                Some(s) => println!("daemon already stopped (pid={})", s.pid),
+                None => println!("(no daemon status file — nothing to stop)"),
+            }
+        }
+        Commands::Notifies { data_dir, last } => {
+            let bus = NotifyBus::open(&data_dir);
+            let entries = bus.load_last(last).context("load notify bus")?;
+            if entries.is_empty() {
+                println!("(no notify bus entries yet — high-signal daemon ticks write here)");
+            } else {
+                for e in entries {
+                    println!(
+                        "tick={} [{}] {} · mood={}",
+                        e.tick, e.kind, e.text, e.mood
+                    );
+                }
+            }
+        }
     }
     Ok(())
+}
+
+fn open_story_title(data_dir: &Path) -> Result<Option<String>> {
+    let store = StoryStore::load(data_dir)?;
+    Ok(store
+        .stories
+        .iter()
+        .find(|s| s.status == StoryStatus::Open)
+        .map(|s| s.title.clone()))
+}
+
+fn run_daemon(
+    data_dir: PathBuf,
+    persona: Option<PathBuf>,
+    repo: Option<PathBuf>,
+    every_secs: u64,
+    voice: bool,
+    quiet: bool,
+    immediate: bool,
+) -> Result<()> {
+    if every_secs == 0 {
+        anyhow::bail!("--every must be >= 1 second");
+    }
+
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+        eprintln!("\n[waga daemon] Ctrl+C — shutting down…");
+    })
+    .context("install Ctrl+C handler")?;
+
+    let mut status = DaemonStatus::start(every_secs);
+    status.save(&data_dir)?;
+    let bus = NotifyBus::open(&data_dir);
+
+    let snap = peek_snapshot(&data_dir, "strict-cto").unwrap_or_else(|_| {
+        waga_core::WorldSnapshot::fresh("strict-cto")
+    });
+    let mut watch = DaemonWatch {
+        last_mood: mood_from_snapshot(&snap).as_str().into(),
+        open_story_title: open_story_title(&data_dir).ok().flatten(),
+    };
+
+    println!(
+        "waga daemon started pid={} every={}s voice={} quiet={} data={}",
+        status.pid,
+        every_secs,
+        if voice { "on" } else { "off" },
+        if quiet { "yes" } else { "no" },
+        data_dir.display()
+    );
+    println!("Ctrl+C or `waga daemon-stop` to exit.\n");
+
+    let mut first = true;
+    while running.load(Ordering::SeqCst) {
+        // Cooperative stop via `waga daemon-stop` (do not clobber with later saves)
+        if stop_requested(&data_dir, status.pid) {
+            println!("[waga daemon] stop flag set — exiting");
+            break;
+        }
+
+        if first && !immediate {
+            first = false;
+        } else {
+            first = false;
+            match run_tick_with(
+                &data_dir,
+                persona.as_deref(),
+                repo.as_deref(),
+                TickOptions { voice },
+            ) {
+                Ok(result) => {
+                    let open = open_story_title(&data_dir).ok().flatten();
+                    let interesting =
+                        is_interesting_tick(&watch, &result, open.as_deref());
+
+                    if interesting {
+                        for entry in notify_entries_for_tick(&watch, &result, open.as_deref()) {
+                            if let Err(e) = bus.append(&entry) {
+                                tracing::warn!("notify bus: {e}");
+                            }
+                        }
+                    }
+
+                    update_watch(&mut watch, &result, open);
+                    status.record_tick(&result, interesting);
+                    // If stop was requested during the tick, keep running=false on disk.
+                    if stop_requested(&data_dir, status.pid) {
+                        if interesting || !quiet {
+                            let tag = if interesting { "!" } else { "." };
+                            println!("[{tag}] {}", format_tick_summary(&result));
+                        }
+                        println!("[waga daemon] stop flag set during tick — exiting");
+                        break;
+                    }
+                    if let Err(e) = status.save(&data_dir) {
+                        tracing::warn!("daemon status: {e}");
+                    }
+
+                    if interesting || !quiet {
+                        let tag = if interesting { "!" } else { "." };
+                        println!("[{tag}] {}", format_tick_summary(&result));
+                    } else {
+                        tracing::debug!(
+                            tick = result.snapshot.tick,
+                            mood = %result.pet_mood,
+                            "quiet heartbeat"
+                        );
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[waga daemon] tick error: {e}");
+                    tracing::error!("daemon tick failed: {e}");
+                }
+            }
+        }
+
+        if stop_requested(&data_dir, status.pid) || !running.load(Ordering::SeqCst) {
+            break;
+        }
+
+        // Sleep in slices so Ctrl+C / stop flag are responsive
+        let slice = Duration::from_millis(200);
+        let deadline = Instant::now() + Duration::from_secs(every_secs);
+        while Instant::now() < deadline && running.load(Ordering::SeqCst) {
+            if stop_requested(&data_dir, status.pid) {
+                break;
+            }
+            thread::sleep(slice);
+        }
+    }
+
+    status.mark_stopped(&data_dir)?;
+    println!(
+        "waga daemon stopped after {} ticks ({} interesting)",
+        status.ticks_total, status.interesting_total
+    );
+    Ok(())
+}
+
+/// True when `daemon-stop` cleared the running flag for this process.
+fn stop_requested(data_dir: &Path, pid: u32) -> bool {
+    match DaemonStatus::load(data_dir) {
+        Ok(Some(s)) => !s.running && s.pid == pid,
+        _ => false,
+    }
 }
 
 struct PetApp {
