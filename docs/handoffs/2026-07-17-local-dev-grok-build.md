@@ -154,7 +154,7 @@ c1f5ca3 feat: classified memories + park XP
 - **SuperCollider / playerctl** optional; park core works without them.  
 - **Always-on daemon v0:** `waga daemon` (interval ticks, `daemon.json`, `notify.jsonl`); not a Windows service yet.  
 - **No Home Assistant / messaging / A2A bridge** yet (designed direction only).  
-- **No Grok Build integration** yet (world digest / “agent blocked” notify).  
+- **Grok Build bridge v0:** file bus (`.waga/bridge/world.md` + `inbox.jsonl`) — see `2026-07-19-grok-build-bridge.md`.  
 - Clean-only ticks do **not** grant XP — need dirty→clean story arc.  
 - Voice silent if no API keys (warns, does not fail tick).
 
@@ -167,8 +167,9 @@ c1f5ca3 feat: classified memories + park XP
 3. **`MusicBackend` trait** — SC primary, Lyria RealTime adapter later  
 4. **Windows media** if needed (or skip until Linux always-on)  
 5. **Notify channels** — HA / Telegram sharing same decisions as voice  
-6. **Bridge to Grok Build** — world blurb in / status out (file, MCP, or A2A)  
+6. ~~**Bridge to Grok Build**~~ — file v0 shipped; MCP/A2A later  
 7. **STT converse** — after notify TTS feels solid  
+8. **Bridge polish** — TTS on inbox `blocked`; optional MCP wrapper  
 
 ---
 

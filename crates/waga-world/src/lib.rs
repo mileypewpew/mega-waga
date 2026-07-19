@@ -1,7 +1,9 @@
 //! World Engine: sensors + event-backed tick (event log is ground truth).
 
+mod bridge;
 mod daemon;
 
+pub use bridge::*;
 pub use daemon::*;
 
 use chrono::Local;

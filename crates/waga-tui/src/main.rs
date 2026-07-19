@@ -34,8 +34,9 @@ use waga_voice::{
     example_voice_toml, load_voice_config, resolve_provider, speak, SpeakIntent, VoiceProvider,
 };
 use waga_world::{
-    format_daemon_status, format_tick_summary, is_interesting_tick, notify_entries_for_tick,
-    peek_snapshot, run_tick_with, update_watch, DaemonStatus, DaemonWatch, NotifyBus, TickOptions,
+    export_bridge, format_daemon_status, format_inbox_line, format_tick_summary,
+    is_interesting_tick, load_inbox_last, notify_entries_for_tick, peek_snapshot, post_inbox,
+    run_tick_with, update_watch, DaemonStatus, DaemonWatch, NotifyBus, TickOptions,
 };
 
 #[derive(Parser, Debug)]
@@ -173,6 +174,45 @@ enum Commands {
         #[arg(long, default_value_t = 20)]
         last: usize,
     },
+    /// Grok Build file bridge (world export + inbox).
+    Bridge {
+        #[command(subcommand)]
+        action: BridgeAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum BridgeAction {
+    /// Write `.waga/bridge/world.md` + `world.json` for Grok Build to read.
+    Export {
+        #[arg(long, default_value = ".waga")]
+        data_dir: PathBuf,
+    },
+    /// Show export paths + short blurb + recent inbox.
+    Status {
+        #[arg(long, default_value = ".waga")]
+        data_dir: PathBuf,
+    },
+    /// List messages Build (or `bridge post`) wrote to the inbox.
+    Inbox {
+        #[arg(long, default_value = ".waga")]
+        data_dir: PathBuf,
+        #[arg(long, default_value_t = 20)]
+        last: usize,
+    },
+    /// Post a message into the park inbox (simulates Grok Build).
+    Post {
+        /// Message body
+        text: String,
+        #[arg(long, default_value = "note")]
+        kind: String,
+        #[arg(long, default_value = "grok-build")]
+        source: String,
+        #[arg(long)]
+        session: Option<String>,
+        #[arg(long, default_value = ".waga")]
+        data_dir: PathBuf,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -246,6 +286,10 @@ fn main() -> Result<()> {
                 TickOptions { voice: voice_on },
             )
             .context("tick failed")?;
+            // Refresh file bridge for Grok Build after each manual tick.
+            if let Err(e) = export_bridge(&data_dir) {
+                tracing::warn!("bridge export: {e}");
+            }
             println!("{}", format_tick_summary(&result));
         }
         Commands::Say {
@@ -459,6 +503,58 @@ fn main() -> Result<()> {
                 }
             }
         }
+        Commands::Bridge { action } => match action {
+            BridgeAction::Export { data_dir } => {
+                let w = export_bridge(&data_dir).context("bridge export")?;
+                println!(
+                    "exported tick={} → {} and {}",
+                    w.tick,
+                    data_dir.join("bridge/world.md").display(),
+                    data_dir.join("bridge/world.json").display()
+                );
+                println!("{}", w.blurb);
+            }
+            BridgeAction::Status { data_dir } => {
+                let w = export_bridge(&data_dir).context("bridge export")?;
+                println!("bridge dir: {}", data_dir.join("bridge").display());
+                println!("world.md / world.json updated at {}", w.exported_at);
+                println!();
+                println!("{}", w.blurb);
+                println!();
+                let inbox = load_inbox_last(&data_dir, 5).context("inbox")?;
+                if inbox.is_empty() {
+                    println!("inbox: (empty — Build can append bridge/inbox.jsonl)");
+                } else {
+                    println!("inbox (last {}):", inbox.len());
+                    for m in inbox {
+                        println!("  {}", format_inbox_line(&m));
+                    }
+                }
+            }
+            BridgeAction::Inbox { data_dir, last } => {
+                let inbox = load_inbox_last(&data_dir, last).context("inbox")?;
+                if inbox.is_empty() {
+                    println!("(inbox empty — use `waga bridge post` or append inbox.jsonl)");
+                } else {
+                    for m in inbox {
+                        println!("{}", format_inbox_line(&m));
+                    }
+                }
+            }
+            BridgeAction::Post {
+                text,
+                kind,
+                source,
+                session,
+                data_dir,
+            } => {
+                let msg = post_inbox(&data_dir, kind, text, source, session)
+                    .context("append inbox")?;
+                // Refresh export so Build status is visible in world.md
+                let _ = export_bridge(&data_dir);
+                println!("posted: {}", format_inbox_line(&msg));
+            }
+        },
     }
     Ok(())
 }
@@ -548,6 +644,10 @@ fn run_daemon(
 
                     update_watch(&mut watch, &result, open);
                     status.record_tick(&result, interesting);
+                    // Keep Grok Build bridge files fresh (world blurb).
+                    if let Err(e) = export_bridge(&data_dir) {
+                        tracing::warn!("bridge export: {e}");
+                    }
                     // If stop was requested during the tick, keep running=false on disk.
                     if stop_requested(&data_dir, status.pid) {
                         if interesting || !quiet {

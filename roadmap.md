@@ -1,6 +1,6 @@
 # Roadmap — grok-waga
 
-**Status:** Always-on daemon v0 **implemented** (interval ticks + notify bus); voice notify v1 earlier  
+**Status:** Grok Build file bridge v0 **implemented**; always-on daemon v0 earlier  
 **Last updated:** 2026-07-19  
 
 This is a living map, not a contract. We move one phase at a time.

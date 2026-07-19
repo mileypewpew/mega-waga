@@ -96,7 +96,15 @@ cargo run -p waga-tui -- daemon-status
 cargo run -p waga-tui -- notifies --last 10
 # cooperative stop (or Ctrl+C in the daemon terminal)
 cargo run -p waga-tui -- daemon-stop
+
+# Grok Build file bridge (world blurb out, inbox in)
+cargo run -p waga-tui -- bridge export
+cargo run -p waga-tui -- bridge status
+cargo run -p waga-tui -- bridge post "cargo test failed" --kind blocked
+cargo run -p waga-tui -- bridge inbox
 ```
+
+See [Grok Build bridge handoff](./docs/handoffs/2026-07-19-grok-build-bridge.md).
 
 ### HumanMusic (SuperCollider)
 
@@ -134,11 +142,12 @@ cargo run -p waga-tui -- daemon-stop
 | `waga-world` | Sensors + event-backed `run_tick` |
 | `waga-character` | Persona TOML + template notices |
 | `waga-pet` | Mood mapping + ASCII sprites |
-| `waga-tui` | Binary `waga`: `tick` · `status` · `events` · `stories` · `memories` · `skills` · `pet` · `daemon` |
+| `waga-tui` | Binary `waga`: `tick` · `status` · `events` · `stories` · `memories` · `skills` · `pet` · `daemon` · `bridge` |
 
 **Truth:** `events.jsonl` is ground truth. `world.json` / `skills.json` are projection caches.  
 Memories live in `memories.jsonl` (index) + `MemoryFormed` events. XP is park-wide (not per persona).  
-**Always-on:** `waga daemon` ticks on an interval; status in `daemon.json`; high-signal lines append to `notify.jsonl` (file bus for future bridges).
+**Always-on:** `waga daemon` ticks on an interval; status in `daemon.json`; high-signal lines append to `notify.jsonl`.  
+**Grok Build bridge:** `.waga/bridge/world.md` (park → Build) and `inbox.jsonl` (Build → park).
 
 Stack aligns with Grok Build: Rust, Cargo workspace, clap, ratatui/crossterm, serde, chrono, tracing. Greenfield (**Path A**), not a monorepo fork.
 
@@ -151,6 +160,7 @@ Stack aligns with Grok Build: Rust, Cargo workspace, clap, ratatui/crossterm, se
 | [roadmap.md](./roadmap.md) | Phases and product decisions |
 | [Tick Kernel design](./docs/superpowers/specs/2026-07-16-tick-kernel-v0-design.md) | v0 design |
 | [Implementation plan](./docs/superpowers/plans/2026-07-16-tick-kernel-v0.md) | Build plan |
+| [Grok Build bridge](./docs/handoffs/2026-07-19-grok-build-bridge.md) | File bus park ↔ Build |
 
 ## License
 
